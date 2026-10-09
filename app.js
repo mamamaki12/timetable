@@ -110,16 +110,17 @@ function renderGrid() {
           h += `<button class="course c${c.color ?? 0}${cs.length > 1 ? ' clash' : ''}" data-id="${c.id}">
             <span class="cname">${esc(c.name)}</span>
             ${c.room ? `<span class="croom">${esc(c.room)}</span>` : ''}
-            ${absenceBadge(c)}${openTaskCount(c) ? `<span class="dot" title="未提出の課題">${openTaskCount(c)}</span>` : ''}
+            ${absenceBadge(c) || openTaskCount(c) ? `<span class="meta">${openTaskCount(c) ? `<span class="dot" title="未提出の課題">課${openTaskCount(c)}</span>` : ''}${absenceBadge(c)}</span>` : ''}
           </button>`;
         }
-        if (cands.length) h += `<button class="cand-chip" data-slot-list="${d}-${p}">ほか候補${cands.length}</button>`;
+        if (cands.length) h += `<button class="cand-chip" data-slot-list="${d}-${p}" aria-label="${DAYS[d]}曜${p}限のほかの候補${cands.length}件">＋候補${cands.length}</button>`;
         h += '</div></td>';
       }
     }
     h += '</tr>';
   }
   $('#grid').innerHTML = h + '</tbody>';
+  $('#grid').style.setProperty('--days', days);
 }
 
 const openTaskCount = (c) => (c.tasks || []).filter((t) => !t.done).length;
@@ -622,7 +623,7 @@ function renderSettings() {
   $('#showP6').checked = s.showP6;
   $('#manabaUrl').value = s.manaba || '';
   $('#periodEditor').innerHTML = s.periods.map((p, i) => `
-    <label><b>${i + 1}限</b><input type="time" data-pi="${i}" data-pj="0" value="${p[0]}"> 〜 <input type="time" data-pi="${i}" data-pj="1" value="${p[1]}"></label>`).join('');
+    <div class="period-row"><b>${i + 1}限</b><span class="pair"><input type="time" data-pi="${i}" data-pj="0" value="${p[0]}" aria-label="${i + 1}限の始まり"> 〜 <input type="time" data-pi="${i}" data-pj="1" value="${p[1]}" aria-label="${i + 1}限の終わり"></span></div>`).join('');
   const bm = bookmarklet();
   $('#bookmarklet').href = bm;
 }
