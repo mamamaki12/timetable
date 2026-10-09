@@ -1,4 +1,4 @@
-import { DAYS, extractCourse, pairsFromText, decodeImport } from './parse.js';
+import { DAYS, extractCourse, pairsFromText, decodeImport, parseTerm } from './parse.js';
 
 const KEY = 'kadai-jikanwari-v1';
 const SYLLABUS_SEARCH = 'https://syllabus11.kuas.kagoshima-u.ac.jp/showSearch';
@@ -387,8 +387,8 @@ function openSlot(key) {
       <p>「${esc(decided.name)}」を履修することにしました。同じコマのほかの候補（${others.length}件）はどうしますか？</p>
       <div class="actions"><button class="btn danger" id="dropOthers">ほかの候補を消す</button><button class="btn" id="keepOthers">候補のまま残す</button></div>
     </div>` : ''}
-    <p class="hint">${list.filter(isCand).length ? '候補を比べて「これにする」で決めます。候補は単位の合計に入りません。' : 'シラバスで見つけたほかの授業を候補として入れておけます。'}</p>
-    <ul class="slot-list">
+    ${list.length ? `<p class="hint">${list.filter(isCand).length ? '候補を比べて「これにする」で決めます。候補は単位の合計に入りません。' : '下の「このコマの授業」から候補を入れておけます。'}</p>` : ''}
+    ${list.length ? `<ul class="slot-list">
       ${list.map((c) => `<li class="slot-item c${c.color ?? 0}${isCand(c) ? ' cand' : ''}">
         <button class="slot-main" data-open="${c.id}">
           <span class="badge${isCand(c) ? '' : ' take'}">${isCand(c) ? '候補' : '履修'}</span>
@@ -400,12 +400,116 @@ function openSlot(key) {
           ${isCand(c) ? `<button class="btn primary" data-decide="${c.id}">これにする</button>` : ''}
         </div>
       </li>`).join('')}
-    </ul>
+    </ul>` : ''}
+    <section class="offers${list.length ? ' ruled' : ''}">
+      <h3>このコマに開講されている授業</h3>
+      <div class="offer-filters">
+        <label>学部<select id="offerDept"></select></label>
+        <label>学年<select id="offerGrade">
+          <option value="">すべて</option>${[1, 2, 3, 4, 5, 6].map((g) => `<option value="${g}"${String(state.settings.grade || '') === String(g) ? ' selected' : ''}>${g}年</option>`).join('')}
+        </select></label>
+        <label class="grow">さがす<input id="offerQuery" type="search" placeholder="科目名・先生の名前" value="${esc(offerQuery)}"></label>
+      </div>
+      <div id="offerList" class="offer-list"><p class="hint">読み込み中…</p></div>
+    </section>
     <div class="actions">
-      <button class="btn" data-add-cand="${key}">＋ このコマに候補を追加</button>
+      <button class="btn" data-add-cand="${key}">✎ 一覧にない授業を自分で入力</button>
     </div>`;
   const dlg = $('#slotSheet');
   if (!dlg.open) dlg.showModal();
+  renderOffers();
+}
+
+// ---- シラバス検索から集めた授業の一覧（data/syllabus-<年度>.json） ----
+const KYOTSU = '58'; // 共通教育センター
+const KYOSHOKU = '59'; // 教師教育開発センター
+const offerData = new Map();
+let offerQuery = '';
+function loadOffers(year) {
+  if (!offerData.has(year)) {
+    // どの年度のデータがあるかを data/index.json で確かめてから取りに行く
+    offerData.set(year, fetch('data/index.json').then((r) => (r.ok ? r.json() : { years: [] }))
+      .then((idx) => (idx.years.some((y) => y.year === year) ? fetch(`data/syllabus-${year}.json`).then((r) => (r.ok ? r.json() : null)) : null))
+      .catch(() => null));
+  }
+  return offerData.get(year);
+}
+// 一覧の1行：[シラバスの番号, 科目名, 担当教員, 開設部局, 学期の番号, 曜日, 時限, 学年]
+const offerTerm = (data, row) => parseTerm(data.sems[row[4]] || '');
+
+async function renderOffers() {
+  const key = slotKey;
+  const [d, p] = key.split('-').map(Number);
+  const { year, term } = state.view;
+  const data = await loadOffers(year);
+  if (slotKey !== key || !$('#slotSheet').open) return;
+  const box = $('#offerList');
+  if (!data) {
+    box.innerHTML = `<p class="hint">${year}年度の授業の一覧はまだありません。「✎ 一覧にない授業を自分で入力」か、🔎 シラバス検索から追加してください。</p>`;
+    return;
+  }
+  // 学部の選択肢（学部→大学院の順）
+  const sel = $('#offerDept');
+  if (!sel.options.length) {
+    const entries = Object.entries(data.depts).filter(([c]) => c !== KYOTSU && c !== KYOSHOKU)
+      .sort((a, b) => /研究科/.test(a[1]) - /研究科/.test(b[1]));
+    sel.innerHTML = `<option value="">共通教育だけ</option>${entries.map(([c, n]) => `<option value="${esc(c)}"${state.settings.dept === c ? ' selected' : ''}>${esc(n)}</option>`).join('')}<option value="*"${state.settings.dept === '*' ? ' selected' : ''}>すべての学部</option>`;
+  }
+  const dept = state.settings.dept || '';
+  const grade = String(state.settings.grade || '');
+  const q = offerQuery.trim().toLowerCase();
+  const rows = data.rows.filter((r) => r[5].includes(String(d)) && r[6].includes(String(p))
+    && [term, '通年'].includes(offerTerm(data, r))
+    && (dept === '*' || r[3] === KYOTSU || r[3] === KYOSHOKU || r[3] === dept)
+    && (!grade || !r[7] || r[7].includes(grade))
+    && (!q || `${r[1]} ${r[2]}`.toLowerCase().includes(q)));
+  // 自分の学部 → 共通教育 → そのほか、の順
+  const rank = (r) => (r[3] === dept ? 0 : r[3] === KYOTSU ? 1 : 2);
+  rows.sort((a, b) => rank(a) - rank(b) || a[1].localeCompare(b[1], 'ja'));
+  const added = new Set(state.courses.filter((c) => c.year === year && c.sid).map((c) => c.sid));
+  const shown = rows.slice(0, 80);
+  box.innerHTML = rows.length ? `
+    <p class="hint">${rows.length}件${rows.length > shown.length ? `（はじめの${shown.length}件。「さがす」で絞り込めます）` : ''}・${year}年度${term}${dept ? '' : '・学部を選ぶと専門の授業も出ます'}</p>
+    <ul class="slot-list">${shown.map((r) => {
+      const isAdded = added.has(String(r[0]));
+      const sem = data.sems[r[4]];
+      return `<li class="offer-item">
+        <div class="offer-main">
+          <b>${esc(r[1])}</b>
+          <small>${esc([r[2], data.depts[r[3]] === '共通教育センター' ? '共通教育' : data.depts[r[3]], sem !== term ? sem : '', r[7] ? `${r[7].split('').join('・')}年` : '', r[5].length > 1 || r[6].length > 1 ? `${[...r[5]].map((x) => DAYS[x] || 'ほか').join('')} ${[...r[6]].filter((x) => x !== 'x').join('・')}限${r[6].includes('x') ? 'ほか' : ''}` : ''].filter(Boolean).join(' ・ '))}</small>
+        </div>
+        <div class="slot-acts">
+          <a class="btn" href="${esc(data.detail + r[0])}" target="_blank" rel="noopener">📖 シラバス</a>
+          ${isAdded ? '<span class="added">追加済み</span>' : `<button class="btn primary" data-offer="${r[0]}">＋ 追加</button>`}
+        </div>
+      </li>`;
+    }).join('')}</ul>`
+    : `<p class="hint">${q ? '「さがす」に当てはまる授業はありません。' : `${year}年度${term}のこのコマの授業は見つかりませんでした。`}${dept && dept !== '*' ? '学部を「すべての学部」にすると、ほかの学部の授業も出ます。' : ''}</p>`;
+}
+
+// 一覧の授業を時間割に入れる。そのコマにもう履修する授業があれば候補として入れる
+async function addOffer(id) {
+  const [d, p] = slotKey.split('-').map(Number);
+  const { year } = state.view;
+  const data = await loadOffers(year);
+  const r = data?.rows.find((x) => x[0] === Number(id));
+  if (!r) return;
+  // 曜日か時限のどちらかが1つなら全部のコマ。どちらも複数（組み合わせ不明）や「集中・不定」があるときは、押したコマだけ
+  const ds = [...r[5]];
+  const ps = [...r[6]];
+  const clear = !ds.includes('x') && !ps.includes('x') && (ds.length === 1 || ps.length === 1);
+  const slots = clear ? ds.flatMap((x) => ps.map((y) => ({ d: Number(x), p: Number(y) }))) : [{ d, p }];
+  const term = offerTerm(data, r) || state.view.term;
+  const busy = slots.some((s) => courseAt(s.d, s.p).length);
+  const course = {
+    id: uid(), sid: String(r[0]), name: r[1], teacher: r[2], room: '', code: '', credits: '',
+    term, category: r[3] === KYOTSU ? '共通教育' : r[3] === KYOSHOKU ? '教職' : '専門',
+    syllabus: data.detail + r[0], manaba: '', sessions: 15, memo: '', slots, color: nextColor(), year,
+    status: busy ? 'cand' : 'take', absences: 0, tasks: [],
+  };
+  state.courses.push(course);
+  save(); render(); openSlot(slotKey);
+  toast(`「${course.name}」を${busy ? '候補に' : '時間割に'}入れました${clear ? '' : `（${DAYS[d]}${p}限だけ。ほかのコマは授業の画面の「編集」で）`}`);
 }
 
 // 候補を履修する授業に決める。重なっている履修中の授業は候補にもどす
@@ -447,13 +551,28 @@ $('#slotSheet').addEventListener('click', async (e) => {
   } else if (t.id === 'keepOthers') {
     decided = null;
     openSlot(slotKey);
+  } else if (t.dataset.offer) {
+    addOffer(t.dataset.offer);
   } else if (t.dataset.addCand) {
     const [d, p] = t.dataset.addCand.split('-').map(Number);
     $('#slotSheet').close();
+    offerQuery = '';
     openEditor({ slots: [{ d, p }], status: courseAt(d, p).length ? 'cand' : 'take' });
   }
 });
 $('#slotSheet').addEventListener('close', () => { decided = null; });
+$('#slotSheet').addEventListener('change', (e) => {
+  if (e.target.id === 'offerDept') state.settings.dept = e.target.value;
+  else if (e.target.id === 'offerGrade') state.settings.grade = e.target.value;
+  else return;
+  save();
+  renderOffers();
+});
+$('#slotSheet').addEventListener('input', (e) => {
+  if (e.target.id !== 'offerQuery') return;
+  offerQuery = e.target.value;
+  renderOffers();
+});
 
 async function copy(text, msg) {
   try {
@@ -700,9 +819,10 @@ document.addEventListener('click', (e) => {
   const b = e.target.closest('button');
   if (!b) return;
   if (b.dataset.add) {
-    const [d, p] = b.dataset.add.split('-').map(Number);
-    openEditor({ slots: [{ d, p }] });
+    offerQuery = '';
+    openSlot(b.dataset.add);
   } else if (b.dataset.slotList) {
+    offerQuery = '';
     openSlot(b.dataset.slotList);
   } else if (b.dataset.id) {
     openDetail(b.dataset.id);
@@ -741,9 +861,17 @@ function handleIncoming() {
   history.replaceState(null, '', location.pathname);
   const same = state.courses.find((c) => (got.sid && c.sid === got.sid) || (got.code && c.code === got.code && (!got.year || c.year === got.year)));
   if (same) {
-    if (got.syllabus && !same.syllabus) { same.syllabus = got.syllabus; save(); render(); }
+    // 一覧から入れた授業には単位などがないので、シラバスから読んだ値で空いている項目を埋める
+    let filled = 0;
+    for (const k of ['syllabus', 'teacher', 'credits', 'sessions', 'category', 'sid']) {
+      if (got[k] !== undefined && got[k] !== '' && (same[k] === undefined || same[k] === '' || (k === 'sessions' && same[k] === 15))) {
+        if (same[k] !== got[k]) filled++;
+        same[k] = got[k];
+      }
+    }
+    if (filled) { save(); render(); }
     openDetail(same.id);
-    toast('この授業はもう時間割に入っています');
+    toast(filled ? 'この授業はもう入っているので、空いていた項目（単位など）をシラバスから埋めました' : 'この授業はもう時間割に入っています');
     return;
   }
   const n = Object.keys(got).filter((k) => !['syllabus', 'sid', 'slotNote'].includes(k)).length;

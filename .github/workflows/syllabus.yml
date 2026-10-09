@@ -1,0 +1,38 @@
+name: シラバスの授業一覧を更新
+# 週に1回、鹿大シラバス検索から授業の一覧を集めて data/ に入れ、変わっていれば公開し直す。
+# （GITHUB_TOKEN で push しても Pages の公開は動かないので、最後に公開のワークフローを呼ぶ）
+on:
+  schedule:
+    - cron: '17 18 * * 0' # 毎週月曜 3:17（日本時間）
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: syllabus
+  cancel-in-progress: false
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/fetch-syllabus.mjs
+      - name: 変わっていたらコミットして公開し直す
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 取得した日時だけの違いは無視する
+          if git diff --quiet -I '"fetchedAt"' -- data; then
+            echo "授業の一覧に変更はありません"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          git commit -m "シラバスの授業一覧を更新"
+          git push
+          gh workflow run pages.yml --ref main

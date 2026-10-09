@@ -26,7 +26,7 @@ jobs:
           node-version: 22
       - run: npm test
       - name: 公開するファイルだけを集める
-        run: mkdir _site && cp index.html style.css app.js parse.js sw.js manifest.webmanifest icon.svg _site/
+        run: mkdir _site && cp index.html style.css app.js parse.js sw.js manifest.webmanifest icon.svg _site/ && cp -r data _site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
