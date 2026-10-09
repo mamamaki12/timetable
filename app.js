@@ -69,7 +69,7 @@ const overlapping = (c, slots = c.slots || []) => viewCourses().filter((x) => x.
 function render() {
   const { year, term } = state.view;
   $('#yearLabel').textContent = `${year}年度`;
-  $('#termLabel').textContent = `鹿児島大学 ${year}年度 ${term}`;
+  $('#pageTitle').textContent = `${year}年度 ${term}`;
   $$('.seg button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.term === term)));
   const intensive = isIntensiveView();
   $('#gridWrap').hidden = intensive;
@@ -98,10 +98,10 @@ function renderGrid() {
   const curP = currentPeriod(now);
   const ps = state.settings.periods;
   let h = '<thead><tr><th class="corner"></th>';
-  for (let d = 0; d < days; d++) h += `<th class="${d === today ? 'today' : ''}">${DAYS[d]}</th>`;
+  for (let d = 0; d < days; d++) h += `<th class="${d === today ? 'today' : ''}"><span>${DAYS[d]}</span></th>`;
   h += '</tr></thead><tbody>';
   for (let p = 1; p <= periods; p++) {
-    h += `<tr><th class="ph"><b>${p}</b><small>${ps[p - 1][0]}<br>${ps[p - 1][1]}</small></th>`;
+    h += `<tr><th class="ph"><b>${p}</b><small><span>${ps[p - 1][0]}</span><i></i><span>${ps[p - 1][1]}</span></small></th>`;
     for (let d = 0; d < days; d++) {
       const cs = courseAt(d, p);
       const cands = candsAt(d, p);
