@@ -46,12 +46,29 @@ function save() {
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { toast('保存できませんでした（ブラウザの保存領域を確認してください）'); }
 }
 
-function toast(msg) {
+// 画面の下に出る通知。授業の画面などの「ダイアログ」を開いている間は、その外側が操作できなくなり、
+// 通知も裏に隠れてしまうので、開いているダイアログの中に移して出す（閉じたら元に戻す）。
+function placeToast() {
   const t = $('#toast');
+  const host = document.querySelector('dialog[open]') || document.body;
+  if (t.parentElement !== host) host.append(t);
+}
+document.addEventListener('close', placeToast, true);
+function toast(msg, action) {
+  const t = $('#toast');
+  placeToast();
   t.textContent = msg;
+  t.classList.toggle('has-action', !!action);
+  if (action) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = action.label;
+    b.addEventListener('click', () => { t.classList.remove('show'); action.run(); });
+    t.append(b);
+  }
   t.classList.add('show');
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => t.classList.remove('show'), 2600);
+  toast.timer = setTimeout(() => t.classList.remove('show'), action ? 6000 : 2600);
 }
 
 // ---- 表示する授業 ----
@@ -100,7 +117,7 @@ function renderGrid() {
   const today = (now.getDay() + 6) % 7; // 月=0
   const curP = currentPeriod(now);
   const ps = state.settings.periods;
-  let h = '<thead><tr><th class="corner"></th>';
+  let h = '<thead><tr><th class="corner"><span class="sr-only">時限</span></th>';
   for (let d = 0; d < days; d++) h += `<th class="${d === today ? 'today' : ''}"><span>${DAYS[d]}</span></th>`;
   h += '</tr></thead><tbody>';
   for (let p = 1; p <= periods; p++) {
@@ -189,6 +206,7 @@ async function renderIntensiveOffers() {
   const data = await loadOffers(year);
   if (!isIntensiveView() || state.view.year !== year) return;
   const box = $('#intOffers');
+  $('#intFilters').hidden = !data;
   if (!data) { box.innerHTML = noDataHtml(year, '「✎ 一覧にない集中講義を自分で入力」'); return; }
   fillOfferFilters($('#intFilters'), data);
   const q = intQuery.trim().toLowerCase();
@@ -227,7 +245,7 @@ function renderTasks() {
   for (const c of viewCourses()) for (const t of c.tasks || []) if (!t.done) items.push({ c, t });
   items.sort((a, b) => (a.t.due || '9999').localeCompare(b.t.due || '9999'));
   $('#allTasks').innerHTML = items.length
-    ? items.map(({ c, t }) => `<li class="${dueClass(t.due)}"><label><input type="checkbox" data-task="${c.id}:${t.id}"> <span>${esc(t.title)}</span></label><small><button class="link-like" data-id="${c.id}">${esc(c.name)}</button>${t.due ? ` ・ ${fmtDue(t.due)}` : ''}</small></li>`).join('')
+    ? items.map(({ c, t }) => `<li class="${dueClass(t.due)}"><label><input type="checkbox" data-task="${c.id}:${t.id}"> <span>${esc(t.title)}</span></label><small><button class="link-like" data-id="${c.id}">${esc(c.name)}</button>${t.due ? ` ・ <span class="due">${fmtDue(t.due)}</span>` : ''}</small></li>`).join('')
     : '<li class="empty-note">未提出の課題はありません。授業を開いて追加できます。</li>';
 }
 
@@ -372,7 +390,7 @@ function openDetail(id) {
     <section>
       <h3>課題・提出物</h3>
       <ul class="task-list">
-        ${tasks.map((t) => `<li class="${t.done ? 'done' : dueClass(t.due)}"><label><input type="checkbox" data-task="${c.id}:${t.id}" ${t.done ? 'checked' : ''}> <span>${esc(t.title)}</span></label><small>${t.due ? fmtDue(t.due) : ''} <button class="link-like" data-deltask="${t.id}" aria-label="消す">消す</button></small></li>`).join('') || '<li class="empty-note">まだありません</li>'}
+        ${tasks.map((t) => `<li class="${t.done ? 'done' : dueClass(t.due)}"><label><input type="checkbox" data-task="${c.id}:${t.id}" ${t.done ? 'checked' : ''}> <span>${esc(t.title)}</span></label><small>${t.due ? fmtDue(t.due) : ''} <button class="link-like" data-deltask="${t.id}" aria-label="「${esc(t.title)}」を消す">消す</button></small></li>`).join('') || '<li class="empty-note">まだありません</li>'}
       </ul>
       <form class="task-add" id="taskAdd">
         <input name="title" placeholder="例：第3回レポート" required>
@@ -401,8 +419,10 @@ $('#detail').addEventListener('click', async (e) => {
     c.absences = Math.max(0, (c.absences || 0) + Number(t.dataset.abs));
     save(); render(); openDetail(c.id);
   } else if (t.dataset.deltask) {
-    c.tasks = (c.tasks || []).filter((x) => x.id !== t.dataset.deltask);
+    const i = (c.tasks || []).findIndex((x) => x.id === t.dataset.deltask);
+    const [gone] = c.tasks.splice(i, 1);
     save(); render(); openDetail(c.id);
+    toast(`「${gone.title}」を消しました`, { label: '元に戻す', run: () => { c.tasks.splice(i, 0, gone); save(); render(); if ($('#detail').open && detailId === c.id) openDetail(c.id); } });
   } else if (t.dataset.copy) {
     await copy(t.dataset.copy);
   } else if (t.id === 'findSyllabus') {
@@ -435,18 +455,18 @@ $('#detail').addEventListener('submit', (e) => {
 // 授業の画面の「候補」まわり：決めるボタンと、同じコマの候補へのリンク
 function candBox(c) {
   if (c.term === '集中' || !c.slots?.length) {
-    return `<div class="cand-box">${isCand(c) ? '<button class="btn primary" id="decide">✓ これを履修する</button>' : '<button class="btn" id="toCand">候補にもどす</button>'}</div>`;
+    return `<div class="cand-box">${isCand(c) ? '<button class="btn primary" id="decide">✓ これを履修する</button>' : '<button class="text-btn" id="toCand">この授業を候補にもどす</button>'}</div>`;
   }
   const others = overlapping(c);
   const links = [...new Set(c.slots.map((s) => `${s.d}-${s.p}`))].map((k) => {
     const [d, p] = k.split('-').map(Number);
     const n = allAt(d, p).length - 1;
-    return `<button class="link-like" data-slot-list="${k}">${DAYS[d]}${p}限${n ? `のほかの授業・候補（${n}）` : 'に候補を追加'}</button>`;
-  }).join('　');
+    return `<button class="chip" data-slot-list="${k}">${DAYS[d]}${p}限${n ? `のほかの授業・候補（${n}）` : 'の授業をさがす'}</button>`;
+  }).join('');
   return `<div class="cand-box">
     ${isCand(c)
       ? `<button class="btn primary" id="decide">✓ これを履修する</button><p class="hint">${others.length ? `決めると、同じコマの${others.filter((x) => !isCand(x)).length ? '今の授業は候補にもどり、' : ''}ほかの候補を消すか選べます。` : 'このコマにはほかの授業がありません。'}</p>`
-      : `<button class="btn" id="toCand">候補にもどす</button>`}
+      : `<button class="text-btn" id="toCand">この授業を候補にもどす</button>`}
     <p class="slot-links">${links}</p>
   </div>`;
 }
@@ -558,7 +578,7 @@ function offerListHtml(data, rows, { note, showSem, slotsText = true, empty, lim
       return `<li class="offer-item">
         <div class="offer-main">
           <b>${esc(r[1])}</b>
-          <small>${esc([r[2], deptLabel(data, r[3]), showSem(sem) ? sem : '', r[7] ? `${r[7].split('').join('・')}年` : '', r[8] != null ? `${r[8]}単位` : '', when].filter(Boolean).join(' ・ '))}</small>
+          <small>${esc([shortTeachers(r[2]), deptLabel(data, r[3]), showSem(sem) ? sem : '', r[7] ? `${r[7].split('').join('・')}年` : '', r[8] != null ? `${r[8]}単位` : '', when].filter(Boolean).join(' ・ '))}</small>
         </div>
         <div class="slot-acts">
           <a class="btn" href="${esc(data.detail + r[0])}">📖 シラバス</a>
@@ -568,6 +588,11 @@ function offerListHtml(data, rows, { note, showSem, slotsText = true, empty, lim
     }).join('')}</ul>
     ${more && rows.length > shown.length ? `<button class="btn more" data-more>もっと見る（残り${rows.length - shown.length}件）</button>` : ''}`;
 }
+// 「安達、山口、酒匂、…」のように大勢いる授業は、先頭の3名と「ほかN名」にする
+const shortTeachers = (t) => {
+  const names = String(t || '').split(/[、,]\s*/).filter(Boolean);
+  return names.length > 3 ? `${names.slice(0, 3).join('、')} ほか${names.length - 3}名` : t;
+};
 const noDataHtml = (year, how) => `<p class="hint">${year}年度の授業の一覧はまだありません。${how}か、🔎 シラバス検索から追加してください。</p>`;
 
 async function renderOffers() {
@@ -577,6 +602,7 @@ async function renderOffers() {
   const data = await loadOffers(year);
   if (slotKey !== key || !$('#slotSheet').open) return;
   const box = $('#offerList');
+  $('#slotSheet .offer-filters').hidden = !data;
   if (!data) { box.innerHTML = noDataHtml(year, '「✎ 一覧にない授業を自分で入力」'); return; }
   fillOfferFilters($('#slotSheet'), data);
   const q = offerQuery.trim().toLowerCase();
