@@ -140,9 +140,53 @@ main { max-width: 960px; margin: 0 auto; padding: 0 16px 40px; }
 .course {
   position: relative; border: 0; border-radius: 8px; padding: 5px 4px; text-align: left;
   background: var(--cb); color: var(--ci); display: flex; flex-direction: column; gap: 2px; overflow: hidden;
-  min-height: 76px;
+  flex: 1; min-height: 0; width: 100%;
 }
-.course.clash { min-height: 37px; height: auto !important; margin-bottom: 2px; outline: 2px dashed var(--danger); outline-offset: -2px; }
+.stack { display: flex; flex-direction: column; gap: 2px; height: 100%; min-height: 76px; }
+.course.clash { outline: 2px dashed var(--danger); outline-offset: -2px; }
+/* 候補 */
+.cand-chip {
+  flex: none; border: 1px dashed var(--muted); background: var(--surface); color: var(--muted);
+  border-radius: 6px; font-size: 10px; font-weight: 700; padding: 1px 2px; line-height: 1.4;
+}
+.cand-cell {
+  border: 1.5px dashed var(--muted); background: transparent; border-radius: 8px; padding: 4px;
+  display: flex; flex-direction: column; gap: 2px; text-align: left; overflow: hidden; min-height: 76px;
+}
+.cand-count { font-size: 10px; font-weight: 800; color: var(--accent); }
+.cand-name {
+  font-size: 10px; line-height: 1.25; color: var(--ci); background: var(--cb); opacity: .8; border-radius: 4px; padding: 0 3px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.badge {
+  display: inline-block; font-size: 11px; font-weight: 800; line-height: 1.5; padding: 0 6px; margin-right: 6px; border-radius: 6px;
+  border: 1px dashed currentColor; vertical-align: 2px;
+}
+.badge.take { border-style: solid; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.course-line.cand { opacity: .75; border-left-style: dashed; }
+.cand-box { display: grid; gap: 6px; }
+.slot-links { margin: 0; font-size: 13px; }
+.muted { color: var(--muted); font-weight: 400; font-size: 13px; }
+.slot-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.slot-item {
+  display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;
+  border-left: 5px solid var(--ci); background: var(--cb); border-radius: 10px; padding: 8px 10px;
+}
+.slot-item.cand { background: var(--surface-2); border-left-style: dashed; }
+.slot-main { border: 0; background: transparent; text-align: left; padding: 0; display: grid; gap: 2px; color: var(--text); }
+.slot-main b { font-size: 15px; }
+.slot-main small { color: var(--muted); font-size: 12px; }
+.slot-main .badge { justify-self: start; }
+.slot-acts { display: flex; flex-direction: column; gap: 6px; }
+.slot-acts .btn { padding: 6px 10px; font-size: 13px; white-space: nowrap; }
+.notice.decided p { margin: 0 0 6px; }
+.status-pick { border: 0; padding: 0; margin: 0; display: flex; gap: 6px; flex-wrap: wrap; }
+.status-pick legend { font-size: 13px; font-weight: 600; color: var(--muted); padding: 0; margin-bottom: 4px; }
+.status-pick label {
+  display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px;
+  color: var(--text); font-weight: 600; font-size: 14px; cursor: pointer;
+}
+.status-pick label:has(input:checked) { border-color: var(--accent); background: var(--today); color: var(--accent); }
 .cname { font-size: 12px; font-weight: 700; line-height: 1.25; word-break: break-all; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .croom { font-size: 10px; line-height: 1.2; opacity: .9; word-break: break-all; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .abs { position: absolute; right: 3px; bottom: 3px; font-size: 9px; font-weight: 700; padding: 0 4px; border-radius: 6px; background: rgb(255 255 255 / .6); color: var(--ci); }
@@ -257,7 +301,8 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 400; co
   .grid { border-spacing: 2px; }
   .grid th.corner, .ph { width: 30px; }
   .ph small { display: none; }
-  .cell, .course { min-height: 68px; height: 68px; }
+  .cell { height: 68px; }
+  .stack, .cand-cell { min-height: 68px; }
   .cname { font-size: 11px; }
   .croom { font-size: 9px; }
   .seg button { padding: 5px 12px; }

@@ -67,6 +67,11 @@
     <div class="sheet-body" id="detailBody"></div>
   </dialog>
 
+  <!-- 同じコマの授業と候補を比べる -->
+  <dialog id="slotSheet" class="sheet">
+    <div class="sheet-body" id="slotBody"></div>
+  </dialog>
+
   <!-- 授業の編集 -->
   <dialog id="editor" class="sheet">
     <form method="dialog" class="sheet-body" id="editForm" autocomplete="off">
@@ -84,6 +89,12 @@
       </details>
 
       <label>科目名<input name="name" required placeholder="例：初年次セミナーⅠ"></label>
+      <fieldset class="status-pick">
+        <legend>この授業を</legend>
+        <label><input type="radio" name="status" value="take"> 履修する</label>
+        <label><input type="radio" name="status" value="cand"> 候補にする</label>
+      </fieldset>
+      <p class="hint" id="statusHint" hidden></p>
       <div class="row">
         <label>担当教員<input name="teacher" placeholder="例：鹿大 太郎"></label>
         <label>教室<input name="room" list="roomList" placeholder="例：共通教育棟1号館 111"></label>

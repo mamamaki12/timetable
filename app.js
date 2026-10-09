@@ -56,7 +56,13 @@ const inView = (c) => c.year === state.view.year && (c.term === state.view.term 
 const viewCourses = () => state.courses.filter(inView);
 const dayCount = () => (state.settings.showSat || viewCourses().some((c) => c.slots?.some((s) => s.d === 5)) ? 6 : 5);
 const periodCount = () => (state.settings.showP6 || viewCourses().some((c) => c.slots?.some((s) => s.p >= 6)) ? 6 : 5);
-const courseAt = (d, p) => viewCourses().filter((c) => c.term !== '集中' && c.slots?.some((s) => s.d === d && s.p === p));
+// status が 'cand' の授業は「候補」。表では薄く出し、単位や「いま・つぎ」には入れない
+const isCand = (c) => c.status === 'cand';
+const allAt = (d, p) => viewCourses().filter((c) => c.term !== '集中' && c.slots?.some((s) => s.d === d && s.p === p));
+const courseAt = (d, p) => allAt(d, p).filter((c) => !isCand(c));
+const candsAt = (d, p) => allAt(d, p).filter(isCand);
+// この授業とコマが重なっている、ほかの授業
+const overlapping = (c, slots = c.slots || []) => viewCourses().filter((x) => x.id !== c.id && x.term !== '集中' && slots.some((s) => x.slots?.some((t) => t.d === s.d && t.p === s.p)));
 
 function render() {
   const { year, term } = state.view;
@@ -87,12 +93,19 @@ function renderGrid() {
     h += `<tr><th class="ph"><b>${p}</b><small>${ps[p - 1][0]}<br>${ps[p - 1][1]}</small></th>`;
     for (let d = 0; d < days; d++) {
       const cs = courseAt(d, p);
+      const cands = candsAt(d, p);
       const live = d === today && curP?.p === p && curP.during;
       const cls = ['cell', d === today ? 'today' : '', live ? 'live' : ''].join(' ');
-      if (!cs.length) {
+      if (!cs.length && !cands.length) {
         h += `<td class="${cls}"><button class="empty" data-add="${d}-${p}" aria-label="${DAYS[d]}曜${p}限に追加">＋</button></td>`;
+      } else if (!cs.length) {
+        // 候補だけのコマ：候補の数と名前を出し、タップで比べる画面へ
+        h += `<td class="${cls}"><button class="cand-cell" data-slot-list="${d}-${p}" aria-label="${DAYS[d]}曜${p}限の候補${cands.length}件">
+          <span class="cand-count">候補${cands.length}</span>
+          ${cands.slice(0, 3).map((c) => `<span class="cand-name c${c.color ?? 0}">${esc(c.name)}</span>`).join('')}
+        </button></td>`;
       } else {
-        h += `<td class="${cls}">`;
+        h += `<td class="${cls}"><div class="stack">`;
         for (const c of cs) {
           h += `<button class="course c${c.color ?? 0}${cs.length > 1 ? ' clash' : ''}" data-id="${c.id}">
             <span class="cname">${esc(c.name)}</span>
@@ -100,7 +113,8 @@ function renderGrid() {
             ${absenceBadge(c)}${openTaskCount(c) ? `<span class="dot" title="未提出の課題">${openTaskCount(c)}</span>` : ''}
           </button>`;
         }
-        h += '</td>';
+        if (cands.length) h += `<button class="cand-chip" data-slot-list="${d}-${p}">ほか候補${cands.length}</button>`;
+        h += '</div></td>';
       }
     }
     h += '</tr>';
@@ -121,7 +135,7 @@ function absenceBadge(c) {
 function renderExtra() {
   const list = viewCourses().filter((c) => c.term === '集中' || !c.slots?.length);
   $('#extraList').innerHTML = list.length
-    ? list.map((c) => `<li><button class="course-line c${c.color ?? 0}" data-id="${c.id}"><b>${esc(c.name)}</b><small>${esc([c.term, c.teacher, c.room].filter(Boolean).join(' ・ '))}</small></button></li>`).join('')
+    ? list.map((c) => `<li><button class="course-line c${c.color ?? 0}${isCand(c) ? ' cand' : ''}" data-id="${c.id}"><b>${isCand(c) ? '<span class="badge">候補</span>' : ''}${esc(c.name)}</b><small>${esc([c.term, c.teacher, c.room].filter(Boolean).join(' ・ '))}</small></button></li>`).join('')
     : '<li class="empty-note">ありません</li>';
 }
 
@@ -155,18 +169,20 @@ function dueClass(due) {
 }
 
 function renderStats() {
-  const cs = viewCourses();
+  const cs = viewCourses().filter((c) => !isCand(c));
+  const nCand = viewCourses().length - cs.length;
   const credits = cs.reduce((a, c) => a + (Number(c.credits) || 0), 0);
   const koma = cs.reduce((a, c) => a + (c.term === '集中' ? 0 : c.slots?.length || 0), 0);
   const byCat = {};
   for (const c of cs) if (c.category) byCat[c.category] = (byCat[c.category] || 0) + (Number(c.credits) || 0);
-  const yearCredits = state.courses.filter((c) => c.year === state.view.year).reduce((a, c) => a + (Number(c.credits) || 0), 0);
+  const yearCredits = state.courses.filter((c) => c.year === state.view.year && !isCand(c)).reduce((a, c) => a + (Number(c.credits) || 0), 0);
   $('#stats').innerHTML = `
     <div><b>${cs.length}</b><small>授業</small></div>
     <div><b>${koma}</b><small>コマ / 週</small></div>
     <div><b>${credits}</b><small>単位（${state.view.term}）</small></div>
     <div><b>${yearCredits}</b><small>単位（年度）</small></div>
-    ${Object.keys(byCat).length ? `<p class="cats">${Object.entries(byCat).map(([k, v]) => `${esc(k)} ${v}単位`).join(' ・ ')}</p>` : ''}`;
+    ${Object.keys(byCat).length ? `<p class="cats">${Object.entries(byCat).map(([k, v]) => `${esc(k)} ${v}単位`).join(' ・ ')}</p>` : ''}
+    ${nCand ? `<p class="cats">ほかに候補が${nCand}件あります（合計には入れていません）</p>` : ''}`;
 }
 
 // ---- 今の授業・次の授業 ----
@@ -202,7 +218,8 @@ function renderNow() {
   }
   if (!nowC && !next) {
     card.hidden = false;
-    card.innerHTML = `<p class="now-empty">${viewCourses().length ? '今日の授業はもうありません。おつかれさまでした 🌋' : '下の表の「＋」から授業を追加するか、🔎 シラバス検索で授業を探しましょう。'}</p>`;
+    const hasToday = Array.from({ length: periodCount() }, (_, i) => courseAt(d, i + 1).length).some(Boolean);
+    card.innerHTML = `<p class="now-empty">${hasToday ? '今日の授業はもうありません。おつかれさまでした 🌋' : viewCourses().some((c) => !isCand(c)) ? '今日は授業がありません 🌋' : '下の表の「＋」から授業を追加するか、🔎 シラバス検索で授業を探しましょう。'}</p>`;
     return;
   }
   const block = (label, c, p, extra) => `
@@ -238,7 +255,7 @@ function openDetail(id) {
   const tasks = c.tasks || [];
   $('#detailBody').innerHTML = `
     <div class="sheet-head">
-      <h2 class="detail-title c${c.color ?? 0}">${esc(c.name)}</h2>
+      <h2 class="detail-title c${c.color ?? 0}">${isCand(c) ? '<span class="badge">候補</span>' : ''}${esc(c.name)}</h2>
       <button type="button" class="icon-btn" data-close aria-label="閉じる">✕</button>
     </div>
     <dl class="facts">
@@ -254,6 +271,7 @@ function openDetail(id) {
         : `<button class="btn primary big" id="findSyllabus">🔎 シラバス検索で探す</button>`}
       ${safeUrl(c.manaba) ? `<a class="btn big" href="${esc(safeUrl(c.manaba))}" target="_blank" rel="noopener">manaba を開く</a>` : ''}
     </div>
+    ${candBox(c)}
     ${safeUrl(c.syllabus) ? '' : '<p class="hint">科目名をコピーしてからシラバス検索を開きます。見つけた授業のURLを「編集」で貼っておくと、次からはすぐ開けます。</p>'}
 
     <section class="absence">
@@ -307,6 +325,16 @@ $('#detail').addEventListener('click', async (e) => {
   } else if (t.id === 'findSyllabus') {
     await copy(c.code || c.name, `「${c.code || c.name}」をコピーしました。検索画面の科目名${c.code ? 'や時間割コード' : ''}の欄に貼り付けてください`);
     window.open(SYLLABUS_SEARCH, '_blank', 'noopener');
+  } else if (t.id === 'decide') {
+    $('#detail').close();
+    decide(c);
+  } else if (t.id === 'toCand') {
+    c.status = 'cand';
+    save(); render(); openDetail(c.id);
+    toast('候補にもどしました');
+  } else if (t.dataset.slotList) {
+    $('#detail').close();
+    openSlot(t.dataset.slotList);
   } else if (t.id === 'editCourse') {
     $('#detail').close();
     openEditor(c);
@@ -320,6 +348,111 @@ $('#detail').addEventListener('submit', (e) => {
   (c.tasks ||= []).push({ id: uid(), title: String(f.get('title')).trim(), due: String(f.get('due') || ''), done: false });
   save(); render(); openDetail(c.id);
 });
+
+// 授業の画面の「候補」まわり：決めるボタンと、同じコマの候補へのリンク
+function candBox(c) {
+  if (c.term === '集中' || !c.slots?.length) {
+    return isCand(c) ? '<div class="cand-box"><button class="btn primary" id="decide">✓ これを履修する</button></div>' : '';
+  }
+  const others = overlapping(c);
+  const links = [...new Set(c.slots.map((s) => `${s.d}-${s.p}`))].map((k) => {
+    const [d, p] = k.split('-').map(Number);
+    const n = allAt(d, p).length - 1;
+    return `<button class="link-like" data-slot-list="${k}">${DAYS[d]}${p}限${n ? `のほかの授業・候補（${n}）` : 'に候補を追加'}</button>`;
+  }).join('　');
+  return `<div class="cand-box">
+    ${isCand(c)
+      ? `<button class="btn primary" id="decide">✓ これを履修する</button><p class="hint">${others.length ? `決めると、同じコマの${others.filter((x) => !isCand(x)).length ? '今の授業は候補にもどり、' : ''}ほかの候補を消すか選べます。` : 'このコマにはほかの授業がありません。'}</p>`
+      : `<button class="btn" id="toCand">候補にもどす</button>`}
+    <p class="slot-links">${links}</p>
+  </div>`;
+}
+
+// ---- 同じコマの授業と候補を比べる画面 ----
+let slotKey = null;
+let decided = null; // 直前に決めた授業（ほかの候補を消すか聞くため）
+function openSlot(key) {
+  slotKey = key;
+  const [d, p] = key.split('-').map(Number);
+  const ps = state.settings.periods;
+  const list = allAt(d, p).sort((a, b) => isCand(a) - isCand(b));
+  const others = decided ? overlapping(decided).filter(isCand) : [];
+  $('#slotBody').innerHTML = `
+    <div class="sheet-head">
+      <h2>${DAYS[d]}曜${p}限 <small class="muted">${ps[p - 1][0]}〜${ps[p - 1][1]}</small></h2>
+      <button type="button" class="icon-btn" data-close aria-label="閉じる">✕</button>
+    </div>
+    ${decided && others.length ? `<div class="notice decided">
+      <p>「${esc(decided.name)}」を履修することにしました。同じコマのほかの候補（${others.length}件）はどうしますか？</p>
+      <div class="actions"><button class="btn danger" id="dropOthers">ほかの候補を消す</button><button class="btn" id="keepOthers">候補のまま残す</button></div>
+    </div>` : ''}
+    <p class="hint">${list.filter(isCand).length ? '候補を比べて「これにする」で決めます。候補は単位の合計に入りません。' : 'シラバスで見つけたほかの授業を候補として入れておけます。'}</p>
+    <ul class="slot-list">
+      ${list.map((c) => `<li class="slot-item c${c.color ?? 0}${isCand(c) ? ' cand' : ''}">
+        <button class="slot-main" data-open="${c.id}">
+          <span class="badge${isCand(c) ? '' : ' take'}">${isCand(c) ? '候補' : '履修'}</span>
+          <b>${esc(c.name)}</b>
+          <small>${esc([c.teacher, c.room, c.credits ? `${c.credits}単位` : '', (c.slots || []).length > 1 ? c.slots.map((s) => `${DAYS[s.d]}${s.p}`).join('・') : ''].filter(Boolean).join(' ・ ')) || '　'}</small>
+        </button>
+        <div class="slot-acts">
+          ${safeUrl(c.syllabus) ? `<a class="btn" href="${esc(safeUrl(c.syllabus))}" target="_blank" rel="noopener">📖 シラバス</a>` : `<button class="btn" data-find="${c.id}">🔎 シラバス</button>`}
+          ${isCand(c) ? `<button class="btn primary" data-decide="${c.id}">これにする</button>` : ''}
+        </div>
+      </li>`).join('')}
+    </ul>
+    <div class="actions">
+      <button class="btn" data-add-cand="${key}">＋ このコマに候補を追加</button>
+    </div>`;
+  const dlg = $('#slotSheet');
+  if (!dlg.open) dlg.showModal();
+}
+
+// 候補を履修する授業に決める。重なっている履修中の授業は候補にもどす
+function decide(c) {
+  c.status = 'take';
+  const bumped = overlapping(c).filter((x) => !isCand(x));
+  for (const x of bumped) x.status = 'cand';
+  save(); render();
+  const others = overlapping(c).filter(isCand);
+  toast(`「${c.name}」を履修することにしました${bumped.length ? `（${bumped.map((x) => `「${x.name}」`).join('')}は候補にもどしました）` : ''}`);
+  if (others.length && c.slots?.length) {
+    decided = c;
+    openSlot(`${c.slots[0].d}-${c.slots[0].p}`);
+  }
+}
+
+$('#slotSheet').addEventListener('click', async (e) => {
+  if (e.target === $('#slotSheet')) return $('#slotSheet').close();
+  const t = e.target.closest('button');
+  if (!t) return;
+  if (t.matches('[data-close]')) return $('#slotSheet').close();
+  if (t.dataset.open) {
+    $('#slotSheet').close();
+    openDetail(t.dataset.open);
+  } else if (t.dataset.find) {
+    const c = state.courses.find((x) => x.id === t.dataset.find);
+    await copy(c.code || c.name, `「${c.code || c.name}」をコピーしました。検索画面に貼り付けてください`);
+    window.open(SYLLABUS_SEARCH, '_blank', 'noopener');
+  } else if (t.dataset.decide) {
+    decided = null;
+    decide(state.courses.find((x) => x.id === t.dataset.decide));
+    if (!decided) openSlot(slotKey);
+  } else if (t.id === 'dropOthers') {
+    const drop = overlapping(decided).filter(isCand);
+    state.courses = state.courses.filter((x) => !drop.includes(x));
+    decided = null;
+    save(); render(); openSlot(slotKey);
+    toast(`候補を${drop.length}件消しました`);
+  } else if (t.id === 'keepOthers') {
+    decided = null;
+    openSlot(slotKey);
+  } else if (t.dataset.addCand) {
+    const [d, p] = t.dataset.addCand.split('-').map(Number);
+    $('#slotSheet').close();
+    openEditor({ slots: [{ d, p }], status: courseAt(d, p).length ? 'cand' : 'take' });
+  }
+});
+$('#slotSheet').addEventListener('close', () => { decided = null; });
 
 async function copy(text, msg) {
   try {
@@ -347,6 +480,8 @@ function openEditor(course, notice) {
   }
   if (!c.term) f.elements.term.value = state.view.term;
   pickedSlots = (c.slots || []).map((s) => ({ ...s }));
+  f.elements.status.value = c.status || 'take';
+  updateStatusHint();
   pickedColor = c.color ?? nextColor();
   $('#importNotice').hidden = !notice;
   $('#importNotice').textContent = notice || '';
@@ -383,6 +518,18 @@ function renderSlotPicker() {
   $('#slotPicker').innerHTML = h + '</div>';
 }
 
+// 選んだコマにもう履修する授業があれば、そのことを出す
+function updateStatusHint() {
+  const f = $('#editForm');
+  const names = [...new Set(pickedSlots.flatMap((s) => courseAt(s.d, s.p)).filter((c) => c.id !== editing?.id).map((c) => `「${c.name}」`))];
+  const hint = $('#statusHint');
+  hint.hidden = !names.length;
+  hint.textContent = !names.length ? ''
+    : f.elements.status.value === 'cand' ? `同じコマに${names.join('')}があるので、候補として入れます。`
+    : `同じコマに${names.join('')}があります。「履修する」で保存すると、そちらは候補にもどります。`;
+}
+$('#editForm').addEventListener('change', (e) => { if (e.target.name === 'status') updateStatusHint(); });
+
 function renderColorPicker() {
   let h = '';
   for (let i = 0; i < COLORS; i++) h += `<button type="button" class="swatch c${i}${i === pickedColor ? ' on' : ''}" data-color="${i}" aria-label="色${i + 1}" aria-pressed="${i === pickedColor}"></button>`;
@@ -399,6 +546,7 @@ $('#editor').addEventListener('click', (e) => {
     const i = pickedSlots.findIndex((s) => s.d === d && s.p === p);
     if (i >= 0) pickedSlots.splice(i, 1); else pickedSlots.push({ d, p });
     renderSlotPicker();
+    updateStatusHint();
   } else if (b.dataset.color) {
     pickedColor = Number(b.dataset.color);
     renderColorPicker();
@@ -448,6 +596,7 @@ $('#editForm').addEventListener('submit', (e) => {
     sessions: Number(v('sessions')) || 15, memo: f.elements.memo.value.trim(),
     slots: [...pickedSlots].sort((a, b) => a.d - b.d || a.p - b.p), color: pickedColor,
     year: Number(f.dataset.year) || state.view.year,
+    status: f.elements.status.value === 'cand' ? 'cand' : 'take',
   };
   if (editing) Object.assign(editing, data);
   else state.courses.push({ id: uid(), absences: 0, tasks: [], ...data });
@@ -456,10 +605,14 @@ $('#editForm').addEventListener('submit', (e) => {
     state.view.year = data.year;
     if (data.term === '前期' || data.term === '後期') state.view.term = data.term;
   }
-  const clash = data.term !== '集中' && data.slots.find((s) => courseAt(s.d, s.p).filter((c) => c.id !== editing?.id && c.name !== data.name).length);
+  // 「履修する」で保存したら、同じコマで履修中だった授業は候補にもどす（1コマに履修は1つ）
+  const saved = editing || state.courses[state.courses.length - 1];
+  const bumped = data.status === 'take' && data.term !== '集中' ? overlapping(saved).filter((x) => !isCand(x)) : [];
+  for (const x of bumped) x.status = 'cand';
   save(); render();
   $('#editor').close();
-  toast(clash ? `保存しました（${DAYS[clash.d]}${clash.p}限がほかの授業と重なっています）` : '保存しました');
+  toast(bumped.length ? `保存しました（${bumped.map((x) => `「${x.name}」`).join('')}は候補にもどしました）`
+    : data.status === 'cand' ? '候補として保存しました' : '保存しました');
 });
 
 // ---- 設定 ----
@@ -541,6 +694,8 @@ document.addEventListener('click', (e) => {
   if (b.dataset.add) {
     const [d, p] = b.dataset.add.split('-').map(Number);
     openEditor({ slots: [{ d, p }] });
+  } else if (b.dataset.slotList) {
+    openSlot(b.dataset.slotList);
   } else if (b.dataset.id) {
     openDetail(b.dataset.id);
   } else if (b.dataset.term) {
@@ -584,8 +739,13 @@ function handleIncoming() {
     return;
   }
   const n = Object.keys(got).filter((k) => k !== 'syllabus').length;
-  openEditor({ year: state.view.year, term: state.view.term, sessions: 15, ...got },
-    n ? 'シラバスから読み込みました。内容を確かめて保存してください。' : 'シラバスのURLだけ読み込みました。科目名と曜日・時限を入れてください。');
+  const year = got.year || state.view.year;
+  const term = got.term || state.view.term;
+  // もう履修する授業があるコマなら、最初から候補として入れる
+  const busy = term !== '集中' && state.courses.some((c) => !isCand(c) && c.year === year && (c.term === term || c.term === '通年' || term === '通年')
+    && (got.slots || []).some((s) => c.slots?.some((t) => t.d === s.d && t.p === s.p)));
+  openEditor({ year, term, sessions: 15, status: busy ? 'cand' : 'take', ...got },
+    n ? `シラバスから読み込みました。${busy ? '同じコマにもう授業があるので、候補として入れます。' : ''}内容を確かめて保存してください。` : 'シラバスのURLだけ読み込みました。科目名と曜日・時限を入れてください。');
 }
 
 render();
