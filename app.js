@@ -468,6 +468,7 @@ async function copy(text, msg) {
 let editing = null;
 let pickedSlots = [];
 let pickedColor = 0;
+let carry = {}; // 編集画面に出さないが、新しく保存するときに引き継ぐ項目（シラバスの番号など）
 
 function openEditor(course, notice) {
   editing = course?.id ? course : null;
@@ -481,6 +482,7 @@ function openEditor(course, notice) {
   }
   if (!c.term) f.elements.term.value = state.view.term;
   pickedSlots = (c.slots || []).map((s) => ({ ...s }));
+  carry = c.sid ? { sid: c.sid } : {};
   f.elements.status.value = c.status || 'take';
   updateStatusHint();
   pickedColor = c.color ?? nextColor();
@@ -555,7 +557,9 @@ $('#editor').addEventListener('click', (e) => {
     const text = $('#pasteText').value;
     const got = extractCourse(pairsFromText(text), { text });
     const n = fillForm(got);
-    toast(n ? `${n}項目を読み取りました。内容を確かめて保存してください` : '読み取れませんでした。項目を手で入れてください');
+    toast(!n ? '読み取れませんでした。項目を手で入れてください'
+      : got.slotNote ? `${n}項目を読み取りました。${got.slotNote}は組み合わせが分からないので、曜日・時限を選んでください`
+      : `${n}項目を読み取りました。内容を確かめて保存してください`);
     if (n) $('#importBox').open = false;
   } else if (b.id === 'deleteCourse') {
     if (!editing || !confirm(`「${editing.name}」を消しますか？`)) return;
@@ -570,7 +574,7 @@ $('#editor').addEventListener('click', (e) => {
 function fillForm(got) {
   const f = $('#editForm');
   let n = 0;
-  for (const k of ['name', 'teacher', 'room', 'code', 'credits', 'syllabus', 'term', 'category']) {
+  for (const k of ['name', 'teacher', 'room', 'code', 'credits', 'syllabus', 'term', 'category', 'sessions']) {
     if (got[k] === undefined || got[k] === '') continue;
     if (k === 'category' && ![...f.elements.category.options].some((o) => o.value === got[k])) {
       f.elements.category.value = /共通/.test(got[k]) ? '共通教育' : /教職/.test(got[k]) ? '教職' : /専門/.test(got[k]) ? '専門' : '';
@@ -600,7 +604,7 @@ $('#editForm').addEventListener('submit', (e) => {
     status: f.elements.status.value === 'cand' ? 'cand' : 'take',
   };
   if (editing) Object.assign(editing, data);
-  else state.courses.push({ id: uid(), absences: 0, tasks: [], ...data });
+  else state.courses.push({ id: uid(), absences: 0, tasks: [], ...carry, ...data });
   // 保存した授業が見えるように、その年度・学期に切り替える
   if (data.year !== state.view.year || (data.term !== state.view.term && (data.term === '前期' || data.term === '後期'))) {
     state.view.year = data.year;
@@ -629,9 +633,12 @@ function renderSettings() {
 }
 
 // シラバスのページで押すと「見出し→値」の組を集めて、このアプリの #add= に渡す
+// シラバスのページで押すと、このアプリの #add= に授業の情報を渡す。
+// 鹿大シラバス検索の詳しいページ（/showDetail/）では、ページに埋め込まれたデータをそのまま読む。
+// それ以外のページでは「見出し→値」の組を集めて送り、アプリ側で項目を見分ける。
 function bookmarklet() {
   const app = location.origin + location.pathname;
-  const src = `(function(){var A=${JSON.stringify(app)},p=[],x='';function s(e){return((e.innerText||e.textContent||'')+'').replace(/\\s+/g,' ').trim()}function g(d){try{d.querySelectorAll('th,dt,td,label,b,strong,span').forEach(function(e){var k=s(e);if(!k||k.length>20)return;var n=e.nextElementSibling;if(!n)return;var v=s(n);if(v&&v.length<300&&p.length<200)p.push([k,v])});x=x||(d.getSelection&&d.getSelection()+'')||(d.body&&d.body.innerText||'').slice(0,1000);for(var i=0;i<d.defaultView.frames.length;i++)g(d.defaultView.frames[i].document)}catch(e){}}g(document);var u=A+'#add='+encodeURIComponent(JSON.stringify({t:document.title,u:location.href,p:p,x:x.slice(0,1000)}));if(!window.open(u,'_blank'))location.href=u})();`;
+  const src = `(function(){var A=${JSON.stringify(app)},w=window.open('about:blank','_blank');function go(d){var u=A+'#add='+encodeURIComponent(JSON.stringify(d));if(w)w.location.href=u;else location.href=u}function generic(){var p=[],x='';function s(e){return((e.innerText||e.textContent||'')+'').replace(/\\s+/g,' ').trim()}function g(d){try{d.querySelectorAll('th,dt,td,label,b,strong,span').forEach(function(e){var k=s(e);if(!k||k.length>20)return;var n=e.nextElementSibling;if(!n)return;var v=s(n);if(v&&v.length<300&&p.length<200)p.push([k,v])});x=x||(d.getSelection&&d.getSelection()+'')||(d.body&&d.body.innerText||'').slice(0,1000);for(var i=0;i<d.defaultView.frames.length;i++)g(d.defaultView.frames[i].document)}catch(e){}}g(document);go({t:document.title,u:location.href,p:p,x:x.slice(0,1000)})}if(/\\/showDetail\\//.test(location.pathname)){fetch(location.href,{credentials:'same-origin'}).then(function(r){return r.text()}).then(function(h){var m=h.match(/<user-syllabus-detail\\s+:data='([^']*)'/)||h.match(/:data='([^']*)'/),t=document.createElement('textarea');t.innerHTML=m[1];var j=JSON.parse(t.value);function nm(a){return(a||[]).map(function(o){return o.name})}go({u:location.href,k:{id:j.id,n:j.syllabusName,t:j.teacher,ct:j.collaboratedTeacher,c:j.numberOfCredit,s:j.semesterName,tm:j.term,d:nm(j.days),h:nm(j.times),y:j.academicYear,dep:j.courseName,l:j.numberOfLessons}})}).catch(generic)}else generic()})();`;
   return 'javascript:' + src;
 }
 
@@ -732,21 +739,21 @@ function handleIncoming() {
   }
   if (!got) return;
   history.replaceState(null, '', location.pathname);
-  const same = got.code && state.courses.find((c) => c.code === got.code && (!got.year || c.year === got.year));
+  const same = state.courses.find((c) => (got.sid && c.sid === got.sid) || (got.code && c.code === got.code && (!got.year || c.year === got.year)));
   if (same) {
     if (got.syllabus && !same.syllabus) { same.syllabus = got.syllabus; save(); render(); }
     openDetail(same.id);
     toast('この授業はもう時間割に入っています');
     return;
   }
-  const n = Object.keys(got).filter((k) => k !== 'syllabus').length;
+  const n = Object.keys(got).filter((k) => !['syllabus', 'sid', 'slotNote'].includes(k)).length;
   const year = got.year || state.view.year;
   const term = got.term || state.view.term;
   // もう履修する授業があるコマなら、最初から候補として入れる
   const busy = term !== '集中' && state.courses.some((c) => !isCand(c) && c.year === year && (c.term === term || c.term === '通年' || term === '通年')
     && (got.slots || []).some((s) => c.slots?.some((t) => t.d === s.d && t.p === s.p)));
   openEditor({ year, term, sessions: 15, status: busy ? 'cand' : 'take', ...got },
-    n ? `シラバスから読み込みました。${busy ? '同じコマにもう授業があるので、候補として入れます。' : ''}内容を確かめて保存してください。` : 'シラバスのURLだけ読み込みました。科目名と曜日・時限を入れてください。');
+    n ? `シラバスから読み込みました。${got.slotNote ? `${got.slotNote}と書かれていて組み合わせが分からないので、曜日・時限を選んでください。` : ''}${busy ? '同じコマにもう授業があるので、候補として入れます。' : ''}内容を確かめて保存してください。` : 'シラバスのURLだけ読み込みました。科目名と曜日・時限を入れてください。');
 }
 
 render();

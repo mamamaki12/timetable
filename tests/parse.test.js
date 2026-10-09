@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSlots, parseTerm, pairsFromText, extractCourse, decodeImport, toHalf } from '../parse.js';
+import { parseSlots, parseTerm, pairsFromText, extractCourse, decodeImport, toHalf, courseFromKadai, slotsFromDayTime } from '../parse.js';
 
 test('曜日・時限のいろいろな書き方', () => {
   assert.deepEqual(parseSlots('月1'), [{ d: 0, p: 1 }]);
@@ -94,4 +94,60 @@ test('ブックマークレットの #add= を読む', () => {
   assert.equal(c.syllabus, data.u);
   assert.equal(decodeImport('#add=%E3%81'), null);
   assert.equal(decodeImport(''), null);
+});
+
+// 鹿大シラバス検索（syllabus11）の詳しいページを全部選んでコピーしたときの形（値は架空）
+const KADAI_PAGE = [
+  '本文へスキップします。', '', '日本語', ' ', 'English', 'PDFダウンロード ', '', '検索結果に戻る', '',
+  '線形代数学入門', 'Introduction to Linear Algebra', '＜検索キー＞',
+  '日本語と英語の表記が混在する事象が発生する場合がありますが、この事象はシステムエラーではありません。',
+  'ナンバリングコード\t', '開設年度\t2026\t開設部局\t共通教育センター', '学科・プログラム等\t', '（自然科学）数学', '',
+  '学期\t後期\t学年\t１年', '履修期\t\t授業形態\t講義', '科目区分\t選択必修\t単位数\t2単位',
+  '曜日\t火\t時限\t１限', '対面／遠隔\t対面授業\t授業回数\t15回', '＜検索結果＞',
+  '対応していない言語への表示切替は行われず、対応している言語のみが表示されます。',
+  '担当教員', '', '鹿大　太郎', '', '共同担当教員', '', '授業概要', '', '行列と線形写像の基礎を学ぶ。',
+].join('\n');
+
+test('鹿大シラバス検索のページを貼り付けたもの', () => {
+  const c = extractCourse(pairsFromText(KADAI_PAGE), { text: KADAI_PAGE });
+  assert.equal(c.name, '線形代数学入門');
+  assert.equal(c.teacher, '鹿大 太郎');
+  assert.deepEqual(c.slots, [{ d: 1, p: 1 }]);
+  assert.equal(c.term, '後期');
+  assert.equal(c.credits, 2);
+  assert.equal(c.sessions, 15);
+  assert.equal(c.year, 2026);
+  assert.equal(c.category, '共通教育');
+});
+
+test('曜日と時限が別の欄：組み合わせが分かるときと分からないとき', () => {
+  assert.deepEqual(slotsFromDayTime(['火'], ['３限', '４限']).slots, [{ d: 1, p: 3 }, { d: 1, p: 4 }]);
+  assert.deepEqual(slotsFromDayTime(['月', '木'], ['２限']).slots, [{ d: 0, p: 2 }, { d: 3, p: 2 }]);
+  const r = slotsFromDayTime(['月', '火', '水', '木'], ['１限', '２限', '３限', '４限']);
+  assert.equal(r.ambiguous, true);
+  assert.deepEqual(r.slots, []);
+});
+
+test('ブックマークレットが鹿大のページから読んだデータ（k）', () => {
+  const k = { id: 12345, n: '体育・健康科学実習', t: '桜島　花子（代表者）', ct: '', c: '1単位', s: '前期', tm: '', d: ['月', '火'], h: ['３限'], y: 2026, dep: '共通教育センター', l: '15回' };
+  const url = 'https://syllabus11.kuas.kagoshima-u.ac.jp/showDetail/ja/12345';
+  const c = decodeImport('#add=' + encodeURIComponent(JSON.stringify({ u: url, k })));
+  assert.equal(c.name, '体育・健康科学実習');
+  assert.equal(c.teacher, '桜島　花子');
+  assert.equal(c.credits, 1);
+  assert.equal(c.term, '前期');
+  assert.deepEqual(c.slots, [{ d: 0, p: 3 }, { d: 1, p: 3 }]);
+  assert.equal(c.sid, '12345');
+  assert.equal(c.syllabus, url);
+  assert.equal(c.category, '共通教育');
+});
+
+test('鹿大のデータ：ターム・集中・組み合わせ不明', () => {
+  assert.equal(courseFromKadai({ s: '第３ターム' }).term, '後期');
+  const shu = courseFromKadai({ s: '前期', d: ['集中'], h: ['集中'] });
+  assert.equal(shu.term, '集中');
+  assert.equal(shu.slots, undefined);
+  const amb = courseFromKadai({ d: ['月', '火'], h: ['１限', '２限'] });
+  assert.equal(amb.slots, undefined);
+  assert.match(amb.slotNote, /月 火/);
 });
