@@ -14,13 +14,16 @@ concurrency:
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # 単位数のため、新しく増えた授業の詳しいページも読む（長くても40分で区切り、続きは次の回）
       - run: node scripts/fetch-syllabus.mjs
+        env:
+          DETAIL_MINUTES: 40
       - name: 変わっていたらコミットして公開し直す
         env:
           GH_TOKEN: ${{ github.token }}

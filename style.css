@@ -54,6 +54,7 @@
   画面幅の切り替えも em で書くので、文字を大きくすると狭い画面向けの並びになる。
 */
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
@@ -378,3 +379,4 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 400; co
 .offer-main b { font-size: .9375rem; line-height: 1.35; }
 .offer-main small { color: var(--muted); font-size: .75rem; }
 .added { font-size: .8125rem; font-weight: 700; color: var(--muted); padding: .4em .5em; white-space: nowrap; }
+.btn.more { justify-self: center; margin-top: 4px; }

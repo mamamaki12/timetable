@@ -4,13 +4,19 @@
 //   node scripts/fetch-syllabus.mjs            今の年度（とそれより新しく公開されている年度）
 //   node scripts/fetch-syllabus.mjs 2026       年度を指定
 //
-// 相手のサーバーに負担をかけないよう、1回に500件ずつ、1秒以上あけて取りに行く（1年度で10回ほど）。
+// 相手のサーバーに負担をかけないよう、一覧は1回に500件ずつ、1秒以上あけて取りに行く（1年度で10回ほど）。
+// 単位数と授業回数は一覧に出ないので、授業ごとの詳しいページを1件ずつ（約1秒あけて）開いて読む。
+// 読んだ値は data/details.json に覚えておき、次からは新しく増えた授業のページだけを開く。
+// DETAIL_MINUTES（分）を指定すると、詳しいページを読む時間をそれまでに区切る（続きは次の回に読む）。
 import fs from 'node:fs';
 import path from 'node:path';
 
 const BASE = 'https://syllabus11.kuas.kagoshima-u.ac.jp';
 const OUT = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'data');
 const PER_PAGE = 500;
+const DETAIL_GAP_MS = 900;
+const DETAIL_DEADLINE = process.env.DETAIL_MINUTES ? Date.now() + Number(process.env.DETAIL_MINUTES) * 60000 : Infinity;
+const DETAILS_PATH = path.join(OUT, 'details.json');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const DAY_INDEX = { 月: 0, 火: 1, 水: 2, 木: 3, 金: 4, 土: 5, 日: 6 };
@@ -67,6 +73,44 @@ async function searchPage(token, year, firstRowNo) {
   return res.json();
 }
 
+// 詳しいページに埋め込まれたデータから、単位数と授業回数を読む
+async function fetchDetail(id) {
+  const html = await (await request(`${BASE}/showDetail/ja/${id}`)).text();
+  const m = html.match(/<user-syllabus-detail\s+:data='([^']*)'/);
+  if (!m) throw new Error(`詳しいページの作りが変わったようです（${id}）`);
+  const d = JSON.parse(decodeEntities(m[1]));
+  const num = (v) => { const x = toHalf(v).match(/\d+(?:\.\d+)?/); return x ? Number(x[0]) : null; };
+  return [num(d.numberOfCredit), num(d.numberOfLessons)];
+}
+
+// details.json：{ "シラバスの番号": [単位数, 授業回数] }
+function loadDetails() {
+  try { return JSON.parse(fs.readFileSync(DETAILS_PATH, 'utf8')); } catch { return {}; }
+}
+function saveDetails(details) {
+  const sorted = Object.fromEntries(Object.entries(details).sort((a, b) => Number(a[0]) - Number(b[0])));
+  fs.writeFileSync(DETAILS_PATH, JSON.stringify(sorted).replace(/\],"/g, '],\n"') + '\n');
+}
+
+async function fillDetails(ids, details) {
+  const missing = ids.filter((id) => !(String(id) in details));
+  if (!missing.length) return;
+  console.log(`  詳しいページを読みます：${missing.length}件`);
+  let done = 0;
+  for (const id of missing) {
+    if (Date.now() > DETAIL_DEADLINE) { console.log(`  時間になったので、残り${missing.length - done}件は次の回に読みます`); break; }
+    try {
+      details[id] = await fetchDetail(id);
+    } catch (e) {
+      console.log(`  ${id}: 読めませんでした（${e.message}）`);
+    }
+    done++;
+    if (done % 100 === 0) { saveDetails(details); console.log(`  ${done} / ${missing.length}`); }
+    await sleep(DETAIL_GAP_MS);
+  }
+  saveDetails(details);
+}
+
 // 「月 火」→ "01"、集中・不定などは "x"
 const encodeDays = (s) => [...new Set(String(s || '').split(/\s+/).filter(Boolean).map((d) => (d in DAY_INDEX ? String(DAY_INDEX[d]) : 'x')))].join('');
 // 「１限 ２限」→ "12"、集中・不定などは "x"
@@ -75,7 +119,7 @@ const encodeTimes = (s) => [...new Set(String(s || '').split(/\s+/).filter(Boole
 const encodeYears = (s) => [...new Set(toHalf(s).match(/\d(?=年)/g) || [])].join('');
 const cleanTeacher = (s) => String(s || '').replace(/[（(]代表者?[）)]/g, '').replace(/\s+/g, ' ').trim();
 
-async function fetchYear(token, year, courseList) {
+async function fetchYear(token, year, courseList, details) {
   const rows = [];
   let total = Infinity;
   for (let first = 0; first < total; first += PER_PAGE) {
@@ -95,10 +139,11 @@ async function fetchYear(token, year, courseList) {
     if (i < 0) { sems.push(n); i = sems.length - 1; }
     return i;
   };
-  // [シラバスの番号, 科目名, 担当教員, 開設部局のコード, 学期(sems の番号), 曜日, 時限, 学年]
-  const list = rows
-    .filter((r) => r.academic_year === year)
-    .map((r) => [r.id, r.syllabus_name, cleanTeacher(r.teacher), r.course_code, semIndex(r.semester_name), encodeDays(r.day_name), encodeTimes(r.time_name), encodeYears(r.year_name)])
+  const mine = rows.filter((r) => r.academic_year === year);
+  await fillDetails(mine.map((r) => r.id), details);
+  // [シラバスの番号, 科目名, 担当教員, 開設部局, 学期, 曜日, 時限, 学年, 単位数, 授業回数]（単位数・授業回数は分からなければ null）
+  const list = mine
+    .map((r) => [r.id, r.syllabus_name, cleanTeacher(r.teacher), r.course_code, semIndex(r.semester_name), encodeDays(r.day_name), encodeTimes(r.time_name), encodeYears(r.year_name), ...(details[r.id] || [null, null])])
     .sort((a, b) => a[0] - b[0]);
   return { year, source: `${BASE}/showSearch`, detail: `${BASE}/showDetail/ja/`, fetchedAt: new Date().toISOString(), depts, sems, rows: list };
 }
@@ -112,9 +157,10 @@ const years = process.argv[2]
 if (!years.length) throw new Error('取りに行く年度がありません');
 
 fs.mkdirSync(OUT, { recursive: true });
+const details = loadDetails();
 const index = [];
 for (const year of years) {
-  const result = await fetchYear(token, year, data.courseList);
+  const result = await fetchYear(token, year, data.courseList, details);
   if (!result.rows.length) { console.log(`  ${year}年度: 0件なので書き出しません`); continue; }
   fs.writeFileSync(path.join(OUT, `syllabus-${year}.json`), JSON.stringify(result));
   index.push({ year, count: result.rows.length, fetchedAt: result.fetchedAt });

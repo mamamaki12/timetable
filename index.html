@@ -31,6 +31,7 @@
     <div class="seg" role="tablist">
       <button role="tab" data-term="前期">前期</button>
       <button role="tab" data-term="後期">後期</button>
+      <button role="tab" data-term="集中">集中</button>
     </div>
   </nav>
 
@@ -44,15 +45,29 @@
       <a class="link-chip" href="https://www.kagoshima-u.ac.jp/" target="_blank" rel="noopener">鹿大トップ</a>
     </section>
 
-    <div class="grid-wrap">
+    <div class="grid-wrap" id="gridWrap">
       <table class="grid" id="grid" aria-label="時間割"></table>
     </div>
 
-    <section class="panel" id="extraPanel">
-      <h2>集中講義・時間外</h2>
+    <section class="panel" id="extraPanel" hidden>
+      <h2>曜日・時限が決まっていない授業</h2>
       <ul class="extra-list" id="extraList"></ul>
-      <button class="text-btn" id="addExtra">＋ 集中講義などを追加</button>
     </section>
+
+    <!-- 集中講義のページ（「集中」タブ） -->
+    <div id="intensive" hidden>
+      <section class="panel">
+        <h2>わたしの集中講義</h2>
+        <ul class="extra-list" id="intList"></ul>
+        <button class="text-btn" id="addIntensive">✎ 一覧にない集中講義を自分で入力</button>
+      </section>
+      <section class="panel offers">
+        <h2>集中講義・曜日が決まっていない授業をさがす</h2>
+        <p class="hint">夏休み・春休みにまとめて行う授業や、曜日・時限が「不定」の授業です。</p>
+        <div id="intFilters"></div>
+        <div id="intOffers" class="offer-list"><p class="hint">読み込み中…</p></div>
+      </section>
+    </div>
 
     <section class="panel">
       <h2>課題・提出物</h2>
@@ -115,6 +130,11 @@
             <option>共通教育</option><option>専門</option><option>教職</option><option>その他</option>
           </select>
         </label>
+      </div>
+
+      <div class="row" id="dateRow">
+        <label>始まる日<input name="start" type="date"></label>
+        <label>終わる日<input name="end" type="date"></label>
       </div>
 
       <fieldset class="slots">
