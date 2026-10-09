@@ -363,13 +363,18 @@ label.check { display: flex; align-items: center; gap: 8px; font-weight: 400; co
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
 /* 狭い画面（文字を大きくしたときも、ここに入る） */
-@media (max-width: 26.25em) {
-  .grid-wrap { padding: 3px 2px; }
-  .grid { --ph: 1.5rem; border-spacing: 2px; }
+/* スマホ：時間割の枠を画面の左右いっぱいに広げ、時限の列は数字だけの細い列にする（時刻は「いま・つぎ」や授業の画面に出る） */
+@media (max-width: 40em) {
+  .grid-wrap { margin-inline: calc(var(--gutter) * -1); border-radius: 0; box-shadow: none; padding: 3px 1px; }
+  .grid { --ph: 1rem; border-spacing: 2px; }
+  .ph { padding: 0; }
+  .ph b { font-size: .75rem; }
   .ph small { display: none; }
   .course { padding: 3px; }
   .cell { height: 4.25rem; }
   .cell > button, .stack { min-height: 4.25rem; }
+}
+@media (max-width: 26.25em) {
   .cname { font-size: .6875rem; }
   .croom { font-size: .5625rem; }
   .seg button { padding: .3em .75em; }
