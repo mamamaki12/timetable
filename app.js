@@ -350,9 +350,9 @@ function openDetail(id) {
     </dl>
     <div class="big-actions">
       ${safeUrl(c.syllabus)
-        ? `<a class="btn primary big" href="${esc(safeUrl(c.syllabus))}" target="_blank" rel="noopener">📖 シラバスを開く</a>`
+        ? `<a class="btn primary big" href="${esc(safeUrl(c.syllabus))}">📖 シラバスを開く</a>`
         : `<button class="btn primary big" id="findSyllabus">🔎 シラバス検索で探す</button>`}
-      ${safeUrl(c.manaba) ? `<a class="btn big" href="${esc(safeUrl(c.manaba))}" target="_blank" rel="noopener">manaba を開く</a>` : ''}
+      ${safeUrl(c.manaba) ? `<a class="btn big" href="${esc(safeUrl(c.manaba))}">manaba を開く</a>` : ''}
     </div>
     ${candBox(c)}
     ${safeUrl(c.syllabus) ? '' : '<p class="hint">科目名をコピーしてからシラバス検索を開きます。見つけた授業のURLを「編集」で貼っておくと、次からはすぐ開けます。</p>'}
@@ -407,7 +407,7 @@ $('#detail').addEventListener('click', async (e) => {
     await copy(t.dataset.copy);
   } else if (t.id === 'findSyllabus') {
     await copy(c.code || c.name, `「${c.code || c.name}」をコピーしました。検索画面の科目名${c.code ? 'や時間割コード' : ''}の欄に貼り付けてください`);
-    window.open(SYLLABUS_SEARCH, '_blank', 'noopener');
+    location.href = SYLLABUS_SEARCH; // 同じタブで開く
   } else if (t.id === 'decide') {
     $('#detail').close();
     decide(c);
@@ -478,7 +478,7 @@ function openSlot(key) {
           <small>${esc([c.teacher, c.room, c.credits ? `${c.credits}単位` : '', (c.slots || []).length > 1 ? c.slots.map((s) => `${DAYS[s.d]}${s.p}`).join('・') : ''].filter(Boolean).join(' ・ ')) || '　'}</small>
         </button>
         <div class="slot-acts">
-          ${safeUrl(c.syllabus) ? `<a class="btn" href="${esc(safeUrl(c.syllabus))}" target="_blank" rel="noopener">📖 シラバス</a>` : `<button class="btn" data-find="${c.id}">🔎 シラバス</button>`}
+          ${safeUrl(c.syllabus) ? `<a class="btn" href="${esc(safeUrl(c.syllabus))}">📖 シラバス</a>` : `<button class="btn" data-find="${c.id}">🔎 シラバス</button>`}
           ${isCand(c) ? `<button class="btn primary" data-decide="${c.id}">これにする</button>` : ''}
         </div>
       </li>`).join('')}
@@ -561,7 +561,7 @@ function offerListHtml(data, rows, { note, showSem, slotsText = true, empty, lim
           <small>${esc([r[2], deptLabel(data, r[3]), showSem(sem) ? sem : '', r[7] ? `${r[7].split('').join('・')}年` : '', r[8] != null ? `${r[8]}単位` : '', when].filter(Boolean).join(' ・ '))}</small>
         </div>
         <div class="slot-acts">
-          <a class="btn" href="${esc(data.detail + r[0])}" target="_blank" rel="noopener">📖 シラバス</a>
+          <a class="btn" href="${esc(data.detail + r[0])}">📖 シラバス</a>
           ${added.has(String(r[0])) ? '<span class="added">追加済み</span>' : `<button class="btn primary" data-offer="${r[0]}">＋ 追加</button>`}
         </div>
       </li>`;
@@ -647,7 +647,7 @@ $('#slotSheet').addEventListener('click', async (e) => {
   } else if (t.dataset.find) {
     const c = state.courses.find((x) => x.id === t.dataset.find);
     await copy(c.code || c.name, `「${c.code || c.name}」をコピーしました。検索画面に貼り付けてください`);
-    window.open(SYLLABUS_SEARCH, '_blank', 'noopener');
+    location.href = SYLLABUS_SEARCH; // 同じタブで開く
   } else if (t.dataset.decide) {
     decided = null;
     decide(state.courses.find((x) => x.id === t.dataset.decide));
