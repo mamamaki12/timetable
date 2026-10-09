@@ -147,12 +147,7 @@
       </label>
       <p class="hint">空のままでも、授業の画面から「シラバス検索で探す」で科目名をコピーして検索を開けます。</p>
       <label>manaba などのコースURL<input name="manaba" type="url" inputmode="url" placeholder="https://..."></label>
-      <div class="row">
-        <label class="narrow">授業回数<input name="sessions" type="number" min="1" max="60" inputmode="numeric"></label>
-        <label>色
-          <div class="colors" id="colorPicker"></div>
-        </label>
-      </div>
+      <label>授業回数<input name="sessions" type="number" min="1" max="60" inputmode="numeric"></label>
       <label>メモ<textarea name="memo" rows="2" placeholder="持ち物・成績評価の割合など"></textarea></label>
 
       <div class="actions">
@@ -176,6 +171,8 @@
       <h3>表示</h3>
       <label class="check"><input type="checkbox" id="showSat"> 土曜日を出す</label>
       <label class="check"><input type="checkbox" id="showP6"> 6限を出す</label>
+      <h3>時間割の色</h3>
+      <div class="colors" id="themeColors" role="radiogroup" aria-label="時間割の色"></div>
 
       <h3>授業時間</h3>
       <p class="hint">鹿大の標準（1限 8:50〜）にしてあります。学部で違うときは直してください。</p>

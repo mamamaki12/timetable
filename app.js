@@ -13,6 +13,9 @@ const DEFAULT_PERIODS = [
   ['17:50', '19:20'],
 ];
 const COLORS = 8;
+const COLOR_NAMES = ['ピンク', 'オレンジ', '黄', '緑', '水色', '青', '紫', 'グレー'];
+// 時間割の授業は、設定で選んだ1色にそろえる（初めは青）
+const themeColor = () => (Number.isInteger(state.settings?.color) ? state.settings.color : 5);
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -113,12 +116,12 @@ function renderGrid() {
         // 候補だけのコマ：候補の数と名前を出し、タップで比べる画面へ
         h += `<td class="${cls}"><button class="cand-cell" data-slot-list="${d}-${p}" aria-label="${DAYS[d]}曜${p}限の候補${cands.length}件">
           <span class="cand-count">候補${cands.length}</span>
-          ${cands.slice(0, 3).map((c) => `<span class="cand-name c${c.color ?? 0}">${esc(c.name)}</span>`).join('')}
+          ${cands.slice(0, 3).map((c) => `<span class="cand-name c${themeColor()}">${esc(c.name)}</span>`).join('')}
         </button></td>`;
       } else {
         h += `<td class="${cls}"><div class="stack">`;
         for (const c of cs) {
-          h += `<button class="course c${c.color ?? 0}${cs.length > 1 ? ' clash' : ''}" data-id="${c.id}">
+          h += `<button class="course c${themeColor()}${cs.length > 1 ? ' clash' : ''}" data-id="${c.id}">
             <span class="cname">${esc(c.name)}</span>
             ${c.room ? `<span class="croom">${esc(c.room)}</span>` : ''}
             ${absenceBadge(c) || openTaskCount(c) ? `<span class="meta">${openTaskCount(c) ? `<span class="dot" title="未提出の課題">課${openTaskCount(c)}</span>` : ''}${absenceBadge(c)}</span>` : ''}
@@ -144,7 +147,7 @@ function absenceBadge(c) {
   return `<span class="abs ${lvl}">欠${a}</span>`;
 }
 
-const courseLine = (c, sub) => `<li><button class="course-line c${c.color ?? 0}${isCand(c) ? ' cand' : ''}" data-id="${c.id}"><b>${isCand(c) ? '<span class="badge">候補</span>' : ''}${esc(c.name)}</b><small>${esc(sub.filter(Boolean).join(' ・ '))}</small></button></li>`;
+const courseLine = (c, sub) => `<li><button class="course-line c${themeColor()}${isCand(c) ? ' cand' : ''}" data-id="${c.id}"><b>${isCand(c) ? '<span class="badge">候補</span>' : ''}${esc(c.name)}</b><small>${esc(sub.filter(Boolean).join(' ・ '))}</small></button></li>`;
 
 // 前期・後期で、曜日・時限が入っていない授業（あるときだけ出す）
 function renderExtra() {
@@ -303,7 +306,7 @@ function renderNow() {
     return;
   }
   const block = (label, c, p, extra) => `
-    <button class="now-item c${c.color ?? 0}" data-id="${c.id}">
+    <button class="now-item c${themeColor()}" data-id="${c.id}">
       <span class="now-label">${label} ・ ${p}限 ${ps[p - 1][0]}〜${ps[p - 1][1]}${extra ? ` ・ ${extra}` : ''}</span>
       <span class="now-name">${esc(c.name)}</span>
       <span class="now-room">${esc(c.room || '教室未設定')}</span>
@@ -335,7 +338,7 @@ function openDetail(id) {
   const tasks = c.tasks || [];
   $('#detailBody').innerHTML = `
     <div class="sheet-head">
-      <h2 class="detail-title c${c.color ?? 0}">${isCand(c) ? '<span class="badge">候補</span>' : ''}${esc(c.name)}</h2>
+      <h2 class="detail-title c${themeColor()}">${isCand(c) ? '<span class="badge">候補</span>' : ''}${esc(c.name)}</h2>
       <button type="button" class="icon-btn" data-close aria-label="閉じる">✕</button>
     </div>
     <dl class="facts">
@@ -468,7 +471,7 @@ function openSlot(key) {
     </div>` : ''}
     ${list.length ? `<p class="hint">${list.filter(isCand).length ? '候補を比べて「これにする」で決めます。候補は単位の合計に入りません。' : '下の「このコマの授業」から候補を入れておけます。'}</p>` : ''}
     ${list.length ? `<ul class="slot-list">
-      ${list.map((c) => `<li class="slot-item c${c.color ?? 0}${isCand(c) ? ' cand' : ''}">
+      ${list.map((c) => `<li class="slot-item c${themeColor()}${isCand(c) ? ' cand' : ''}">
         <button class="slot-main" data-open="${c.id}">
           <span class="badge${isCand(c) ? '' : ' take'}">${isCand(c) ? '候補' : '履修'}</span>
           <b>${esc(c.name)}</b>
@@ -598,7 +601,7 @@ async function addOffer(id, intensive = false) {
   const base = {
     id: uid(), sid: String(r[0]), name: r[1], teacher: r[2], room: '', code: '', credits: r[8] ?? '',
     category: r[3] === KYOTSU ? '共通教育' : r[3] === KYOSHOKU ? '教職' : '専門',
-    syllabus: data.detail + r[0], manaba: '', sessions: r[9] || 15, memo: '', color: nextColor(), year,
+    syllabus: data.detail + r[0], manaba: '', sessions: r[9] || 15, memo: '', year,
     absences: 0, tasks: [],
   };
   if (intensive) {
@@ -697,7 +700,6 @@ async function copy(text, msg) {
 // ---- 編集画面 ----
 let editing = null;
 let pickedSlots = [];
-let pickedColor = 0;
 let carry = {}; // 編集画面に出さないが、新しく保存するときに引き継ぐ項目（シラバスの番号など）
 
 function openEditor(course, notice) {
@@ -716,24 +718,16 @@ function openEditor(course, notice) {
   carry = c.sid ? { sid: c.sid } : {};
   f.elements.status.value = c.status || 'take';
   updateStatusHint();
-  pickedColor = c.color ?? nextColor();
   $('#importNotice').hidden = !notice;
   $('#importNotice').textContent = notice || '';
   $('#importBox').open = false;
   $('#pasteText').value = '';
   f.dataset.year = c.year;
   renderSlotPicker();
-  renderColorPicker();
   const rooms = [...new Set(state.courses.map((x) => x.room).filter(Boolean))];
   $('#roomList').innerHTML = rooms.map((r) => `<option value="${esc(r)}">`).join('');
   const dlg = $('#editor');
   if (!dlg.open) dlg.showModal();
-}
-
-function nextColor() {
-  const used = viewCourses().map((c) => c.color);
-  for (let i = 0; i < COLORS; i++) if (!used.includes(i)) return i;
-  return viewCourses().length % COLORS;
 }
 
 function renderSlotPicker() {
@@ -774,12 +768,6 @@ function toggleTermFields() {
   $('.slots', f).hidden = intensive;
 }
 
-function renderColorPicker() {
-  let h = '';
-  for (let i = 0; i < COLORS; i++) h += `<button type="button" class="swatch c${i}${i === pickedColor ? ' on' : ''}" data-color="${i}" aria-label="色${i + 1}" aria-pressed="${i === pickedColor}"></button>`;
-  $('#colorPicker').innerHTML = h;
-}
-
 $('#editor').addEventListener('click', (e) => {
   if (e.target === $('#editor')) return $('#editor').close();
   const b = e.target.closest('button');
@@ -791,9 +779,6 @@ $('#editor').addEventListener('click', (e) => {
     if (i >= 0) pickedSlots.splice(i, 1); else pickedSlots.push({ d, p });
     renderSlotPicker();
     updateStatusHint();
-  } else if (b.dataset.color) {
-    pickedColor = Number(b.dataset.color);
-    renderColorPicker();
   } else if (b.id === 'readPaste') {
     const text = $('#pasteText').value;
     const got = extractCourse(pairsFromText(text), { text });
@@ -840,7 +825,7 @@ $('#editForm').addEventListener('submit', (e) => {
     credits: v('credits') === '' ? '' : Number(v('credits')),
     term, category: v('category'), syllabus: safeUrl(v('syllabus')), manaba: safeUrl(v('manaba')),
     sessions: Number(v('sessions')) || 15, memo: f.elements.memo.value.trim(),
-    slots: term === '集中' ? [] : [...pickedSlots].sort((a, b) => a.d - b.d || a.p - b.p), color: pickedColor,
+    slots: term === '集中' ? [] : [...pickedSlots].sort((a, b) => a.d - b.d || a.p - b.p),
     year: Number(f.dataset.year) || state.view.year,
     start: term === '集中' ? f.elements.start.value : '', end: term === '集中' ? f.elements.end.value : '',
     status: f.elements.status.value === 'cand' ? 'cand' : 'take',
@@ -868,6 +853,7 @@ function renderSettings() {
   $('#showSat').checked = s.showSat;
   $('#showP6').checked = s.showP6;
   $('#manabaUrl').value = s.manaba || '';
+  $('#themeColors').innerHTML = Array.from({ length: COLORS }, (_, i) => `<button type="button" role="radio" class="swatch c${i}${i === themeColor() ? ' on' : ''}" data-theme="${i}" aria-checked="${i === themeColor()}" aria-label="${COLOR_NAMES[i]}"></button>`).join('');
   $('#periodEditor').innerHTML = s.periods.map((p, i) => `
     <div class="period-row"><b>${i + 1}限</b><span class="pair"><input type="time" data-pi="${i}" data-pj="0" value="${p[0]}" aria-label="${i + 1}限の始まり"> 〜 <input type="time" data-pi="${i}" data-pj="1" value="${p[1]}" aria-label="${i + 1}限の終わり"></span></div>`).join('');
   const bm = bookmarklet();
@@ -890,6 +876,12 @@ $('#settings').addEventListener('click', (e) => {
 });
 $('#bookmarklet').addEventListener('click', (e) => { e.preventDefault(); toast('ブックマークバーにドラッグしてください'); });
 $('#copyBookmarklet').addEventListener('click', () => copy(bookmarklet(), 'コピーしました。ブックマークを作り、URLの欄に貼り付けてください'));
+$('#themeColors').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-theme]');
+  if (!b) return;
+  state.settings.color = Number(b.dataset.theme);
+  save(); render(); renderSettings();
+});
 $('#showSat').addEventListener('change', (e) => { state.settings.showSat = e.target.checked; save(); render(); });
 $('#showP6').addEventListener('change', (e) => { state.settings.showP6 = e.target.checked; save(); render(); });
 $('#manabaUrl').addEventListener('change', (e) => { state.settings.manaba = e.target.value.trim(); save(); render(); });
