@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>鹿大じかんわり</title>
+  <meta name="description" content="鹿児島大学の学生のための時間割アプリ。シラバスからそのまま授業を追加できます。">
+  <meta name="theme-color" content="#8a1538">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">鹿</span>
+      <div>
+        <h1>鹿大じかんわり</h1>
+        <p class="sub" id="termLabel"></p>
+      </div>
+    </div>
+    <button class="icon-btn" id="openSettings" aria-label="設定">⚙</button>
+  </header>
+
+  <nav class="terms" aria-label="学期">
+    <button class="year-btn" id="prevYear" aria-label="前の年度">‹</button>
+    <span id="yearLabel" class="year"></span>
+    <button class="year-btn" id="nextYear" aria-label="次の年度">›</button>
+    <div class="seg" role="tablist">
+      <button role="tab" data-term="前期">前期</button>
+      <button role="tab" data-term="後期">後期</button>
+    </div>
+  </nav>
+
+  <main>
+    <section id="nowCard" class="now-card" aria-live="polite"></section>
+
+    <section class="links" aria-label="鹿大のページ">
+      <a class="link-chip primary" id="syllabusSearch" href="https://syllabus11.kuas.kagoshima-u.ac.jp/showSearch" target="_blank" rel="noopener">🔎 シラバス検索</a>
+      <a class="link-chip" href="https://gakumuweb01.kuas.kagoshima-u.ac.jp/portal/" target="_blank" rel="noopener">学務系ポータル</a>
+      <a class="link-chip" id="manabaLink" target="_blank" rel="noopener" hidden>manaba</a>
+      <a class="link-chip" href="https://www.kagoshima-u.ac.jp/" target="_blank" rel="noopener">鹿大トップ</a>
+    </section>
+
+    <div class="grid-wrap">
+      <table class="grid" id="grid" aria-label="時間割"></table>
+    </div>
+
+    <section class="panel" id="extraPanel">
+      <h2>集中講義・時間外</h2>
+      <ul class="extra-list" id="extraList"></ul>
+      <button class="text-btn" id="addExtra">＋ 集中講義などを追加</button>
+    </section>
+
+    <section class="panel">
+      <h2>課題・提出物</h2>
+      <ul class="task-list" id="allTasks"></ul>
+    </section>
+
+    <section class="panel stats" id="stats"></section>
+  </main>
+
+  <!-- 授業の詳しい画面 -->
+  <dialog id="detail" class="sheet">
+    <div class="sheet-body" id="detailBody"></div>
+  </dialog>
+
+  <!-- 授業の編集 -->
+  <dialog id="editor" class="sheet">
+    <form method="dialog" class="sheet-body" id="editForm" autocomplete="off">
+      <div class="sheet-head">
+        <h2 id="editTitle">授業を追加</h2>
+        <button type="button" class="icon-btn" data-close aria-label="閉じる">✕</button>
+      </div>
+      <p class="notice" id="importNotice" hidden></p>
+
+      <details class="import" id="importBox">
+        <summary>📋 シラバスから読み込む</summary>
+        <p class="hint">シラバスのページで全体を選んでコピーし、ここに貼り付けてください。科目名・教員・教室・曜日時限・時間割コードを読み取ります（パソコンでは設定の「ブックマークレット」を使うと1回で追加できます）。</p>
+        <textarea id="pasteText" rows="4" placeholder="シラバスの文字をここに貼り付け"></textarea>
+        <button type="button" class="btn" id="readPaste">読み取る</button>
+      </details>
+
+      <label>科目名<input name="name" required placeholder="例：初年次セミナーⅠ"></label>
+      <div class="row">
+        <label>担当教員<input name="teacher" placeholder="例：鹿大 太郎"></label>
+        <label>教室<input name="room" list="roomList" placeholder="例：共通教育棟1号館 111"></label>
+      </div>
+      <div class="row">
+        <label>時間割コード<input name="code" inputmode="latin" placeholder="シラバスに書いてある番号"></label>
+        <label class="narrow">単位<input name="credits" type="number" min="0" max="20" step="0.5" inputmode="decimal"></label>
+      </div>
+      <div class="row">
+        <label>学期
+          <select name="term">
+            <option>前期</option><option>後期</option><option>通年</option><option>集中</option>
+          </select>
+        </label>
+        <label>区分
+          <select name="category">
+            <option value="">—</option>
+            <option>共通教育</option><option>専門</option><option>教職</option><option>その他</option>
+          </select>
+        </label>
+      </div>
+
+      <fieldset class="slots">
+        <legend>曜日・時限 <span class="hint">（タップで選ぶ。2コマ続きの実験なども）</span></legend>
+        <div id="slotPicker" class="slot-picker"></div>
+      </fieldset>
+
+      <label>シラバスのURL
+        <input name="syllabus" type="url" inputmode="url" placeholder="https://syllabus11.kuas.kagoshima-u.ac.jp/...">
+      </label>
+      <p class="hint">空のままでも、授業の画面から「シラバス検索で探す」で科目名をコピーして検索を開けます。</p>
+      <label>manaba などのコースURL<input name="manaba" type="url" inputmode="url" placeholder="https://..."></label>
+      <div class="row">
+        <label class="narrow">授業回数<input name="sessions" type="number" min="1" max="60" inputmode="numeric"></label>
+        <label>色
+          <div class="colors" id="colorPicker"></div>
+        </label>
+      </div>
+      <label>メモ<textarea name="memo" rows="2" placeholder="持ち物・成績評価の割合など"></textarea></label>
+
+      <div class="actions">
+        <button type="button" class="btn danger" id="deleteCourse" hidden>削除</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close>やめる</button>
+        <button type="submit" class="btn primary">保存</button>
+      </div>
+    </form>
+    <datalist id="roomList"></datalist>
+  </dialog>
+
+  <!-- 設定 -->
+  <dialog id="settings" class="sheet">
+    <div class="sheet-body">
+      <div class="sheet-head">
+        <h2>設定</h2>
+        <button type="button" class="icon-btn" data-close aria-label="閉じる">✕</button>
+      </div>
+
+      <h3>表示</h3>
+      <label class="check"><input type="checkbox" id="showSat"> 土曜日を出す</label>
+      <label class="check"><input type="checkbox" id="showP6"> 6限を出す</label>
+
+      <h3>授業時間</h3>
+      <p class="hint">鹿大の標準（1限 8:50〜）にしてあります。学部で違うときは直してください。</p>
+      <div id="periodEditor" class="period-editor"></div>
+      <button class="text-btn" id="resetPeriods">標準の時間に戻す</button>
+
+      <h3>manaba</h3>
+      <label>manaba のトップのURL<input id="manabaUrl" type="url" inputmode="url" placeholder="https://..."></label>
+
+      <h3>シラバスから1回で追加（ブックマークレット）</h3>
+      <p class="hint">下のボタンをブックマークバーにドラッグしてください。シラバスの授業のページで押すと、このアプリが開いて内容が入った状態になります。スマホでは、コードをコピーして新しいブックマークのURLに貼り付けてください。</p>
+      <p><a class="btn bookmarklet" id="bookmarklet" href="#">＋時間割に追加</a></p>
+      <button class="btn" id="copyBookmarklet">コードをコピー</button>
+
+      <h3>データ</h3>
+      <p class="hint">データはこの端末のブラウザの中だけに保存されます。機種変更のときは書き出して、新しい端末で読み込んでください。</p>
+      <div class="actions wrap">
+        <button class="btn" id="exportData">書き出す</button>
+        <label class="btn file-btn">読み込む<input type="file" id="importFile" accept="application/json,.json" hidden></label>
+      </div>
+      <button class="text-btn danger" id="clearTerm">この学期の授業をすべて消す</button>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "鹿大じかんわり — 鹿児島大学の時間割",
+  "short_name": "鹿大じかんわり",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f3ef",
+  "theme_color": "#8a1538",
+  "lang": "ja",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }],
+  "share_target": { "action": "./", "method": "GET", "params": { "title": "title", "text": "text", "url": "url" } }
+}
