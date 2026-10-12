@@ -121,8 +121,14 @@ export function slotsFromDayTime(days, times) {
   const ds = days.map((x) => DAYS.indexOf(toHalf(x).trim().charAt(0))).filter((d) => d >= 0);
   const ps = times.map((x) => Number(toHalf(x).match(/[1-7]/)?.[0])).filter(Boolean);
   if (!ds.length || !ps.length) return { slots: [], ambiguous: false };
-  if (ds.length > 1 && ps.length > 1) return { slots: [], ambiguous: true };
   const slots = [];
+  if (ds.length > 1 && ps.length > 1) {
+    // 「月 木」「4限 5限」のように曜日と時限が同じ数（2〜3つ）なら、書かれた順に組み合わせる（月4・木5）。
+    // 4つ以上（体育など）や、数が合わないものは、組み合わせが分からないので空にする
+    if (ds.length !== ps.length || ds.length > 3) return { slots: [], ambiguous: true };
+    ds.forEach((d, i) => slots.push({ d, p: ps[i] }));
+    return { slots, ambiguous: false, paired: true };
+  }
   for (const d of ds) for (const p of ps) slots.push({ d, p });
   return { slots, ambiguous: false };
 }

@@ -126,6 +126,12 @@ test('曜日と時限が別の欄：組み合わせが分かるときと分か�
   const r = slotsFromDayTime(['月', '火', '水', '木'], ['１限', '２限', '３限', '４限']);
   assert.equal(r.ambiguous, true);
   assert.deepEqual(r.slots, []);
+  // 曜日と時限が同じ数（2〜3つ）なら、書かれた順に組み合わせる
+  assert.deepEqual(slotsFromDayTime(['月', '木'], ['４限', '５限']).slots, [{ d: 0, p: 4 }, { d: 3, p: 5 }]);
+  assert.deepEqual(slotsFromDayTime(['火', '水', '木'], ['２限', '３限', '４限']).slots, [{ d: 1, p: 2 }, { d: 2, p: 3 }, { d: 3, p: 4 }]);
+  assert.equal(slotsFromDayTime(['月', '木'], ['４限', '５限']).paired, true);
+  // 数が合わないものは、組み合わせが分からない
+  assert.equal(slotsFromDayTime(['月', '木'], ['３限', '４限', '５限']).ambiguous, true);
 });
 
 test('ブックマークレットが鹿大のページから読んだデータ（k）', () => {
@@ -147,7 +153,19 @@ test('鹿大のデータ：ターム・集中・組み合わせ不明', () => {
   const shu = courseFromKadai({ s: '前期', d: ['集中'], h: ['集中'] });
   assert.equal(shu.term, '集中');
   assert.equal(shu.slots, undefined);
-  const amb = courseFromKadai({ d: ['月', '火'], h: ['１限', '２限'] });
+  // 2つずつは、書かれた順に組み合わせる（月1・火2）
+  const pair = courseFromKadai({ d: ['月', '火'], h: ['１限', '２限'] });
+  assert.deepEqual(pair.slots, [{ d: 0, p: 1 }, { d: 1, p: 2 }]);
+  assert.equal(pair.slotNote, undefined);
+  // 4つ以上は、組み合わせが分からない
+  const amb = courseFromKadai({ d: ['月', '火', '水', '木'], h: ['１限', '２限', '３限', '４限'] });
   assert.equal(amb.slots, undefined);
-  assert.match(amb.slotNote, /月 火/);
+  assert.match(amb.slotNote, /月 火 水 木/);
+});
+
+test('シラバスの表「月 木」「４限 ５限」を貼り付けたとき', () => {
+  const text = ['曜日\t月 木', '時限\t４限 ５限', '科目名\t基礎看護学', '学期\t後期'].join('\n');
+  const c = extractCourse(pairsFromText(text), { text });
+  assert.deepEqual(c.slots, [{ d: 0, p: 4 }, { d: 3, p: 5 }]);
+  assert.equal(c.slotNote, undefined);
 });

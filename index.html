@@ -96,6 +96,24 @@
     <div class="sheet-body" id="slotBody"></div>
   </dialog>
 
+  <!-- コマの教室 -->
+  <dialog id="roomSheet" class="sheet">
+    <form method="dialog" class="sheet-body" id="roomForm" autocomplete="off">
+      <div class="sheet-head">
+        <h2 id="roomTitle">教室</h2>
+        <button type="button" class="icon-btn" data-close aria-label="閉じる">✕</button>
+      </div>
+      <p class="hint" id="roomCourse"></p>
+      <label>教室<input id="roomInput" list="roomList" placeholder="例：共通教育棟1号館 111"></label>
+      <label class="check" id="roomAllWrap" hidden><input type="checkbox" id="roomAll"> この授業のほかのコマも、同じ教室にする</label>
+      <div class="actions">
+        <button type="button" class="btn" id="roomClear">教室を空にする</button>
+        <span class="spacer"></span>
+        <button type="submit" class="btn primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- 授業の編集 -->
   <dialog id="editor" class="sheet">
     <form method="dialog" class="sheet-body" id="editForm" autocomplete="off">
@@ -121,7 +139,7 @@
       <p class="hint" id="statusHint" hidden></p>
       <div class="row">
         <label>担当教員<input name="teacher" placeholder="例：鹿大 太郎"></label>
-        <label>教室<input name="room" list="roomList" placeholder="例：共通教育棟1号館 111"></label>
+        <label id="roomLabel">教室<input name="room" list="roomList" placeholder="例：共通教育棟1号館 111"></label>
       </div>
       <div class="row">
         <label>時間割コード<input name="code" inputmode="latin" placeholder="シラバスに書いてある番号"></label>
@@ -149,6 +167,7 @@
       <fieldset class="slots">
         <legend>曜日・時限 <span class="hint">（タップで選ぶ。週に2回ある授業は、両方のコマを選びます。2コマ続きの実験も）</span></legend>
         <div id="slotPicker" class="slot-picker"></div>
+        <div id="slotRooms" class="slot-rooms" hidden></div>
       </fieldset>
 
       <label>シラバスのURL

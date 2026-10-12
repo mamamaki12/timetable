@@ -438,3 +438,11 @@ label.check input { width: 1.3rem; height: 1.3rem; }
 .addslot { background: var(--surface-2); border-radius: 10px; padding: 4px 12px; }
 .addslot summary { font-weight: 700; cursor: pointer; padding-block: .6em; font-size: .875rem; }
 .addslot[open] { display: grid; gap: 6px; padding-bottom: 10px; }
+
+/* ---- コマの教室 ---- */
+.croom.empty { background: transparent; border: 1px dashed currentColor; font-weight: 600; }
+.room-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.room-btn { border: 1px solid var(--line); background: var(--surface-2); color: var(--text); border-radius: 999px; padding: .45em .9em; min-height: 2.5rem; font-size: inherit; text-align: left; }
+.room-btn small { color: var(--muted); font-weight: 700; }
+.room-btn.empty { color: var(--accent); border-style: dashed; font-weight: 600; }
+.slot-rooms { display: grid; gap: 8px; margin-top: 8px; }

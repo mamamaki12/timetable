@@ -86,6 +86,9 @@ function withUndo(message, change) {
   } });
 }
 
+// コマの教室：そのコマに決めた教室があればそれ、なければ授業の教室
+const roomOf = (c, d, p) => { const s = c.slots?.find((x) => x.d === d && x.p === p); return (s && typeof s.room === 'string' ? s.room : c.room) || ''; };
+
 // ---- 表示する授業 ----
 // 「集中」タブでは集中講義だけ、前期・後期では その学期と通年の授業
 const isIntensiveView = () => state.view.term === '集中';
@@ -156,7 +159,7 @@ function renderGrid() {
         for (const c of cs) {
           h += `<button class="course c${themeColor()}${cs.length > 1 ? ' clash' : ''}" data-id="${c.id}">
             <span class="cname">${esc(c.name)}</span>
-            ${c.room ? `<span class="croom">${esc(c.room)}</span>` : ''}
+            <span class="croom${roomOf(c, d, p) ? '' : ' empty'}" data-room-edit="${c.id}:${d}-${p}">${esc(roomOf(c, d, p)) || '教室'}</span>
             ${absenceBadge(c) || openTaskCount(c) ? `<span class="meta">${openTaskCount(c) ? `<span class="dot" title="未提出の課題">課${openTaskCount(c)}</span>` : ''}${absenceBadge(c)}</span>` : ''}
           </button>`;
         }
@@ -342,7 +345,7 @@ function renderNow() {
   const block = (label, c, p, extra) => `
     <button class="now-item c${themeColor()}" data-id="${c.id}">
       <span class="now-label">${label} ・ ${p}限 ${ps[p - 1][0]}〜${ps[p - 1][1]}${extra ? ` ・ ${extra}` : ''}</span>
-      <span class="now-name">${esc(c.name)}<small class="now-room"> ・ ${esc(c.room || '教室未設定')}</small></span>
+      <span class="now-name">${esc(c.name)}<small class="now-room"> ・ ${esc(roomOf(c, d, p) || '教室未設定')}</small></span>
     </button>`;
   let h = '';
   if (nowC) h += block('いま', nowC, cp.p, `残り${cp.left}分`);
@@ -356,6 +359,17 @@ function renderNow() {
 
 // ---- 授業の詳しい画面 ----
 let detailId = null;
+// 授業の画面の「教室」：コマごとに、タップで入れる・変える
+function roomsHtml(c) {
+  const slots = c.term === '集中' ? [] : c.slots || [];
+  if (!slots.length) return c.room ? `<dt>教室</dt><dd>${esc(c.room)}</dd>` : '';
+  const one = slots.length === 1;
+  return `<dt>教室</dt><dd class="room-list">${slots.map((sl) => {
+    const r = roomOf(c, sl.d, sl.p);
+    return `<button class="room-btn${r ? '' : ' empty'}" data-room-edit="${c.id}:${sl.d}-${sl.p}">${one ? '' : `<small>${DAYS[sl.d]}${sl.p}限</small> `}${esc(r) || '教室を入れる'}</button>`;
+  }).join('')}</dd>`;
+}
+
 function openDetail(id) {
   const c = state.courses.find((x) => x.id === id);
   if (!c) return;
@@ -376,7 +390,7 @@ function openDetail(id) {
     </div>
     <dl class="facts">
       <dt>いつ</dt><dd>${esc(c.year)}年度 ${esc(c.term)}<br>${esc(when)}</dd>
-      ${c.room ? `<dt>教室</dt><dd>${esc(c.room)}</dd>` : ''}
+      ${roomsHtml(c)}
       ${c.teacher ? `<dt>担当</dt><dd>${esc(c.teacher)}</dd>` : ''}
       ${c.code ? `<dt>時間割コード</dt><dd><button class="link-like" data-copy="${esc(c.code)}">${esc(c.code)} <small>コピー</small></button></dd>` : ''}
       ${c.credits ? `<dt>単位</dt><dd>${esc(c.credits)}単位${c.category ? `（${esc(c.category)}）` : ''}</dd>` : ''}
@@ -429,6 +443,7 @@ $('#detail').addEventListener('click', async (e) => {
   const t = e.target.closest('button, a');
   if (e.target === $('#detail')) return $('#detail').close();
   if (!t) return;
+  if (t.dataset.roomEdit) return openRoomSheet(t.dataset.roomEdit);
   if (t.matches('[data-close]')) return $('#detail').close();
   if (t.dataset.abs) {
     c.absences = Math.max(0, (c.absences || 0) + Number(t.dataset.abs));
@@ -682,6 +697,7 @@ async function renderOffers() {
   fillOfferFilters($('#slotSheet'), data);
   const q = offerQuery.trim().toLowerCase();
   const rows = sortOffers(data.rows.filter((r) => r[5].includes(String(d)) && r[6].includes(String(p))
+    && slotsOfOffer(r, d, p).slots.some((x) => x.d === d && x.p === p)
     && [term, '通年'].includes(offerTerm(data, r)) && offerMatches(r, q)));
   const dept = state.settings.dept || '';
   box.innerHTML = offerListHtml(data, rows, {
@@ -690,6 +706,18 @@ async function renderOffers() {
     slot: { d, p },
     empty: `${q ? '「さがす」に当てはまる授業はありません。' : `${year}年度${term}のこのコマの授業は見つかりませんでした。`}${dept && dept !== '*' ? '学部を「すべての学部」にすると、ほかの学部の授業も出ます。' : ''}`,
   });
+}
+
+// 一覧の授業が入るコマ。
+// 曜日か時限のどちらかが1つなら全部のコマ。「月 木」「4限 5限」のように同じ数（2〜3つ）なら、書かれた順に組み合わせる（月4・木5）。
+// それ以外（体育の4×4など）や「集中・不定」があるときは組み合わせが分からないので、押したコマだけ
+function slotsOfOffer(r, d, p) {
+  const ds = [...r[5]];
+  const ps = [...r[6]];
+  const plain = !ds.includes('x') && !ps.includes('x');
+  if (plain && (ds.length === 1 || ps.length === 1)) return { slots: ds.flatMap((x) => ps.map((y) => ({ d: Number(x), p: Number(y) }))), clear: true };
+  if (plain && ds.length === ps.length && ds.length <= 3) return { slots: ds.map((x, i) => ({ d: Number(x), p: Number(ps[i]) })), clear: true };
+  return { slots: [{ d, p }], clear: false };
 }
 
 // 一覧の授業を時間割に入れる。
@@ -713,11 +741,7 @@ async function addOffer(id, intensive = false) {
     return;
   }
   const [d, p] = slotKey.split('-').map(Number);
-  // 曜日か時限のどちらかが1つなら全部のコマ。どちらも複数（組み合わせ不明）や「集中・不定」があるときは、押したコマだけ
-  const ds = [...r[5]];
-  const ps = [...r[6]];
-  const clear = !ds.includes('x') && !ps.includes('x') && (ds.length === 1 || ps.length === 1);
-  const slots = clear ? ds.flatMap((x) => ps.map((y) => ({ d: Number(x), p: Number(y) }))) : [{ d, p }];
+  const { slots, clear } = slotsOfOffer(r, d, p);
   const busy = slots.some((s) => courseAt(s.d, s.p).length);
   state.courses.push({ ...base, term: offerTerm(data, r) || state.view.term, slots, status: busy ? 'cand' : 'take' });
   save(); render(); openSlot(slotKey);
@@ -752,6 +776,49 @@ function addSlotTo(courseId, key) {
   });
   openSlot(key);
 }
+
+// ---- コマの教室を入れる ----
+let roomTarget = null;
+function openRoomSheet(key) {
+  const [id, slot] = key.split(':');
+  const [d, p] = slot.split('-').map(Number);
+  const c = state.courses.find((x) => x.id === id);
+  if (!c) return;
+  roomTarget = { id, d, p };
+  $('#roomTitle').textContent = `${DAYS[d]}曜${p}限の教室`;
+  $('#roomCourse').textContent = c.name;
+  $('#roomInput').value = roomOf(c, d, p);
+  const many = (c.slots || []).length > 1;
+  $('#roomAllWrap').hidden = !many;
+  $('#roomAll').checked = false;
+  const rooms = [...new Set(state.courses.flatMap((x) => [x.room, ...(x.slots || []).map((sl) => sl.room)]).filter(Boolean))];
+  $('#roomList').innerHTML = rooms.map((r) => `<option value="${esc(r)}">`).join('');
+  $('#roomSheet').showModal();
+  $('#roomInput').focus();
+}
+function saveRoom(value) {
+  const { id, d, p } = roomTarget;
+  const c = state.courses.find((x) => x.id === id);
+  if (!c) return;
+  const v = value.trim();
+  const many = (c.slots || []).length > 1;
+  if (!many || $('#roomAll').checked) {
+    // 1コマの授業と「ほかのコマも同じ」は、授業の教室にする（コマごとの指定はなくす）
+    c.room = v;
+    for (const sl of c.slots || []) delete sl.room;
+  } else {
+    const sl = c.slots.find((x) => x.d === d && x.p === p);
+    sl.room = v;
+  }
+  save(); render();
+  $('#roomSheet').close();
+  if ($('#detail').open && detailId === id) openDetail(id);
+  if ($('#slotSheet').open) openSlot(slotKey);
+  toast(v ? `${DAYS[d]}${p}限の教室を「${v}」にしました` : `${DAYS[d]}${p}限の教室を空にしました`);
+}
+$('#roomForm').addEventListener('submit', (e) => { e.preventDefault(); saveRoom($('#roomInput').value); });
+$('#roomClear').addEventListener('click', () => saveRoom(''));
+$('#roomSheet').addEventListener('click', (e) => { if (e.target === $('#roomSheet') || e.target.closest('[data-close]')) $('#roomSheet').close(); });
 
 // 候補を履修する授業に決める。重なっている履修中の授業は候補にもどす
 function decide(c) {
@@ -856,11 +923,31 @@ function openEditor(course, notice) {
   $('#pasteText').value = '';
   f.dataset.year = c.year;
   renderSlotPicker();
-  const rooms = [...new Set(state.courses.map((x) => x.room).filter(Boolean))];
+  const rooms = [...new Set(state.courses.flatMap((x) => [x.room, ...(x.slots || []).map((sl) => sl.room)]).filter(Boolean))];
   $('#roomList').innerHTML = rooms.map((r) => `<option value="${esc(r)}">`).join('');
   const dlg = $('#editor');
   if (!dlg.open) dlg.showModal();
 }
+
+// 2コマ以上の授業で、コマごとに教室が違うとき（違うコマだけ入れる。空なら、上の「教室」と同じ）
+function renderSlotRooms() {
+  const box = $('#slotRooms');
+  const many = pickedSlots.length > 1 && $('#editForm').elements.term.value !== '集中';
+  $('#roomLabel').firstChild.textContent = many ? '教室（全コマ共通）' : '教室';
+  box.hidden = !many;
+  if (!many) { box.innerHTML = ''; return; }
+  const sorted = [...pickedSlots].sort((a, b) => a.d - b.d || a.p - b.p);
+  box.innerHTML = `<p class="hint">コマごとに教室が違うときだけ入れてください（空なら、上の教室と同じです）。</p>` + sorted.map((sl) => `
+    <label>${DAYS[sl.d]}${sl.p}限の教室<input data-slot-room="${sl.d}-${sl.p}" list="roomList" value="${esc(sl.room || '')}" placeholder="${esc($('#editForm').elements.room.value || '上の教室と同じ')}"></label>`).join('');
+}
+$('#slotRooms').addEventListener('input', (e) => {
+  const k = e.target.dataset.slotRoom;
+  if (!k) return;
+  const [d, p] = k.split('-').map(Number);
+  const sl = pickedSlots.find((x) => x.d === d && x.p === p);
+  if (sl) sl.room = e.target.value;
+});
+$('#editForm').elements.room.addEventListener('input', () => { if (!$('#slotRooms').hidden) renderSlotRooms(); });
 
 function renderSlotPicker() {
   const days = Math.max(dayCount(), pickedSlots.some((s) => s.d === 5) ? 6 : 0);
@@ -876,6 +963,7 @@ function renderSlotPicker() {
     }
   }
   $('#slotPicker').innerHTML = h + '</div>';
+  renderSlotRooms();
 }
 
 // 選んだコマにもう履修する授業があれば、そのことを出す
@@ -898,6 +986,7 @@ function toggleTermFields() {
   const intensive = f.elements.term.value === '集中';
   $('#dateRow').hidden = !intensive;
   $('.slots', f).hidden = intensive;
+  renderSlotRooms();
 }
 
 $('#editor').addEventListener('click', (e) => {
@@ -955,11 +1044,19 @@ $('#editForm').addEventListener('submit', (e) => {
     credits: v('credits') === '' ? '' : Number(v('credits')),
     term, category: v('category'), syllabus: safeUrl(v('syllabus')), manaba: safeUrl(v('manaba')),
     sessions: Number(v('sessions')) || 15, memo: f.elements.memo.value.trim(),
-    slots: term === '集中' ? [] : [...pickedSlots].sort((a, b) => a.d - b.d || a.p - b.p),
+    slots: term === '集中' ? [] : [...pickedSlots].sort((a, b) => a.d - b.d || a.p - b.p).map((sl) => {
+      // 上の「教室」と違うコマだけ、コマの教室を持つ
+      const r = (sl.room || '').trim();
+      const out = { d: sl.d, p: sl.p };
+      if (r && r !== v('room')) out.room = r;
+      return out;
+    }),
     year: Number(f.dataset.year) || state.view.year,
     start: term === '集中' ? f.elements.start.value : '', end: term === '集中' ? f.elements.end.value : '',
     status: f.elements.status.value === 'cand' ? 'cand' : 'take',
   };
+  // 1コマだけになったとき、そのコマに教室があって上の「教室」が空なら、上の「教室」にする
+  if (data.slots.length === 1 && data.slots[0].room && !data.room) { data.room = data.slots[0].room; delete data.slots[0].room; }
   if (editing) Object.assign(editing, data);
   else state.courses.push({ id: uid(), absences: 0, tasks: [], ...carry, ...data });
   // 保存した授業が見えるように、その年度・学期に切り替える
@@ -1114,6 +1211,9 @@ $('#clearTerm').addEventListener('click', () => {
 // ---- 画面の操作 ----
 document.addEventListener('click', (e) => {
   if (e.target.closest('dialog')) return;
+  // 時間割のコマの「教室」欄をタップしたときは、授業の画面ではなく、教室を入れる画面を開く
+  const re = e.target.closest('[data-room-edit]');
+  if (re) { openRoomSheet(re.dataset.roomEdit); return; }
   const b = e.target.closest('button');
   if (!b) return;
   if (b.dataset.add) {
