@@ -140,7 +140,9 @@ function renderGrid() {
   for (let d = 0; d < days; d++) h += `<th class="${d === today ? 'today' : ''}"><span>${DAYS[d]}</span></th>`;
   h += '</tr></thead><tbody>';
   for (let p = 1; p <= periods; p++) {
-    h += `<tr><th class="ph"><b>${p}</b><small><span>${ps[p - 1][0]}</span><i></i><span>${ps[p - 1][1]}</span></small></th>`;
+    // 左の列は、時限の数字と、開始時刻だけ（時を上、分を下に並べて、列を細くする）。終わりの時刻は、読み上げと長押しで分かる
+    const [sh, sm] = ps[p - 1][0].split(':');
+    h += `<tr><th class="ph" scope="row" title="${p}限 ${ps[p - 1][0]}〜${ps[p - 1][1]}"><b>${p}<span class="sr-only">限 ${ps[p - 1][0]}から${ps[p - 1][1]}まで</span></b><small aria-hidden="true"><span>${sh}</span><span>${sm}</span></small></th>`;
     for (let d = 0; d < days; d++) {
       const cs = courseAt(d, p);
       const cands = candsAt(d, p);
