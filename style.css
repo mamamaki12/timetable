@@ -433,3 +433,8 @@ label.check input { width: 1.3rem; height: 1.3rem; }
 
 /* ---- 授業時間（24時間の文字で入れる） ---- */
 .time-in { text-align: center; font-variant-numeric: tabular-nums; }
+
+/* ---- すでに入れた授業を、このコマにも入れる ---- */
+.addslot { background: var(--surface-2); border-radius: 10px; padding: 4px 12px; }
+.addslot summary { font-weight: 700; cursor: pointer; padding-block: .6em; font-size: .875rem; }
+.addslot[open] { display: grid; gap: 6px; padding-bottom: 10px; }

@@ -518,6 +518,7 @@ function openSlot(key) {
         </div>
       </li>`).join('')}
     </ul>` : ''}
+    ${sameCourseHtml(d, p)}
     <section class="offers${list.length ? ' ruled' : ''}">
       <h3>このコマに開講されている授業</h3>
       ${offerFiltersHtml(offerQuery)}
@@ -630,8 +631,18 @@ function sortOffers(rows) {
   return rows.sort((a, b) => rank(a) - rank(b) || a[1].localeCompare(b[1], 'ja'));
 }
 const deptLabel = (data, code) => (code === KYOTSU ? '共通教育' : data.depts[code] || '');
-function offerListHtml(data, rows, { note, showSem, slotsText = true, empty, limit = 80, more = false }) {
-  const added = new Set(state.courses.filter((c) => c.year === data.year && c.sid).map((c) => c.sid));
+function offerListHtml(data, rows, { note, showSem, slotsText = true, empty, limit = 80, more = false, slot = null }) {
+  const mineBySid = new Map(state.courses.filter((c) => c.year === data.year && c.sid).map((c) => [c.sid, c]));
+  // 追加済みの授業：このコマに入っていなければ、「このコマにも入れる」（週に2回ある授業の2回目）
+  const addedHtml = (sid) => {
+    const c = mineBySid.get(sid);
+    if (slot && c && c.term !== '集中' && (c.term === state.view.term || c.term === '通年')) {
+      return c.slots?.some((x) => x.d === slot.d && x.p === slot.p)
+        ? '<span class="added">このコマに入っています</span>'
+        : `<button class="btn primary" data-addslot="${c.id}">このコマにも入れる</button>`;
+    }
+    return '<span class="added">追加済み</span>';
+  };
   const shown = rows.slice(0, limit);
   if (!rows.length) return `<p class="hint">${empty}</p>`;
   return `<p class="hint">${rows.length}件${rows.length > shown.length && !more ? `（はじめの${shown.length}件。「さがす」で絞り込めます）` : ''}${note ? `・${note}` : ''}</p>
@@ -646,7 +657,7 @@ function offerListHtml(data, rows, { note, showSem, slotsText = true, empty, lim
         </div>
         <div class="slot-acts">
           <a class="btn" href="${esc(data.detail + r[0])}">📖 シラバス</a>
-          ${added.has(String(r[0])) ? '<span class="added">追加済み</span>' : `<button class="btn primary" data-offer="${r[0]}">＋ 追加</button>`}
+          ${mineBySid.has(String(r[0])) ? addedHtml(String(r[0])) : `<button class="btn primary" data-offer="${r[0]}">＋ 追加</button>`}
         </div>
       </li>`;
     }).join('')}</ul>
@@ -676,6 +687,7 @@ async function renderOffers() {
   box.innerHTML = offerListHtml(data, rows, {
     note: `${year}年度${term}${dept ? '' : '・学部を選ぶと専門の授業も出ます'}`,
     showSem: (sem) => sem !== term,
+    slot: { d, p },
     empty: `${q ? '「さがす」に当てはまる授業はありません。' : `${year}年度${term}のこのコマの授業は見つかりませんでした。`}${dept && dept !== '*' ? '学部を「すべての学部」にすると、ほかの学部の授業も出ます。' : ''}`,
   });
 }
@@ -710,6 +722,35 @@ async function addOffer(id, intensive = false) {
   state.courses.push({ ...base, term: offerTerm(data, r) || state.view.term, slots, status: busy ? 'cand' : 'take' });
   save(); render(); openSlot(slotKey);
   toast(`「${r[1]}」を${busy ? '候補に' : '時間割に'}入れました${clear ? '' : `（${DAYS[d]}${p}限だけ。ほかのコマは授業の画面の「編集」で）`}`);
+}
+
+// 週に2回ある授業など：すでに入れた授業を、別のコマにも入れる
+function sameCourseHtml(d, p) {
+  const extra = viewCourses().filter((c) => c.term !== '集中' && !c.slots?.some((s) => s.d === d && s.p === p));
+  if (!extra.length) return '';
+  return `<details class="addslot">
+    <summary>週に2回ある授業：すでに入れた授業を、このコマにも入れる（${extra.length}）</summary>
+    <ul class="slot-list">${extra.map((c) => `<li class="offer-item">
+      <div class="offer-main">
+        <b>${esc(c.name)}</b>
+        <small>${esc([isCand(c) ? '候補' : '履修', (c.slots || []).map((s) => `${DAYS[s.d]}${s.p}限`).join('・') || '曜日・時限なし', c.teacher].filter(Boolean).join(' ・ '))}</small>
+      </div>
+      <div class="slot-acts"><button class="btn primary" data-addslot="${c.id}">このコマにも入れる</button></div>
+    </li>`).join('')}</ul>
+  </details>`;
+}
+function addSlotTo(courseId, key) {
+  const c = state.courses.find((x) => x.id === courseId);
+  const [d, p] = key.split('-').map(Number);
+  if (!c || c.slots?.some((s) => s.d === d && s.p === p)) return;
+  // 履修する授業を入れたとき、同じコマで履修中だった別の授業は候補にもどす（1コマに履修は1つ）
+  const bumped = isCand(c) ? [] : allAt(d, p).filter((x) => x.id !== c.id && !isCand(x));
+  withUndo(`「${c.name}」を${DAYS[d]}${p}限にも入れました${bumped.length ? `（${bumped.map((x) => `「${x.name}」`).join('')}は候補にもどしました）` : ''}`, () => {
+    (c.slots ||= []).push({ d, p });
+    c.slots.sort((a, b) => a.d - b.d || a.p - b.p);
+    for (const x of bumped) x.status = 'cand';
+  });
+  openSlot(key);
 }
 
 // 候補を履修する授業に決める。重なっている履修中の授業は候補にもどす
@@ -750,6 +791,8 @@ $('#slotSheet').addEventListener('click', async (e) => {
   } else if (t.id === 'keepOthers') {
     decided = null;
     openSlot(slotKey);
+  } else if (t.dataset.addslot) {
+    addSlotTo(t.dataset.addslot, slotKey);
   } else if (t.dataset.offer) {
     addOffer(t.dataset.offer);
   } else if (t.dataset.addCand) {
