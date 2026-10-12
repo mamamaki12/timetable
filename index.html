@@ -41,7 +41,6 @@
     <section class="links" aria-label="鹿大のページ">
       <a class="link-chip primary" id="syllabusSearch" href="https://syllabus11.kuas.kagoshima-u.ac.jp/showSearch">🔎 シラバス検索</a>
       <a class="link-chip" href="https://gakumuweb01.kuas.kagoshima-u.ac.jp/portal/">学務系ポータル</a>
-      <a class="link-chip" id="manabaLink" hidden>manaba</a>
       <a class="link-chip" href="https://www.kagoshima-u.ac.jp/">鹿大トップ</a>
     </section>
 
@@ -173,7 +172,6 @@
         <input name="syllabus" type="url" inputmode="url" placeholder="https://syllabus11.kuas.kagoshima-u.ac.jp/...">
       </label>
       <p class="hint">空のままでも、授業の画面から「シラバス検索で探す」で科目名をコピーして検索を開けます。</p>
-      <label>manaba などのコースURL<input name="manaba" type="url" inputmode="url" placeholder="https://..."></label>
       <label>授業回数<input name="sessions" type="number" min="1" max="60" inputmode="numeric"></label>
       <label>メモ<textarea name="memo" rows="2" placeholder="持ち物・成績評価の割合など"></textarea></label>
 
@@ -240,9 +238,6 @@
       <p class="hint">鹿大の標準（1限 8:50〜）にしてあります。学部で違うときは直してください。</p>
       <div id="periodEditor" class="period-editor"></div>
       <button class="text-btn" id="resetPeriods">標準の時間に戻す</button>
-
-      <h3>manaba</h3>
-      <label>manaba のトップのURL<input id="manabaUrl" type="url" inputmode="url" placeholder="https://..."></label>
 
       <h3>シラバスから1回で追加（ブックマークレット）</h3>
       <p class="hint">下のボタンをブックマークバーにドラッグしてください。シラバスの授業のページで押すと、このアプリが開いて内容が入った状態になります。スマホでは、コードをコピーして新しいブックマークのURLに貼り付けてください。</p>

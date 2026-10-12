@@ -34,7 +34,9 @@ function load() {
   try { s = JSON.parse(localStorage.getItem(KEY)); } catch { s = null; }
   const cur = currentTerm();
   s = s && typeof s === 'object' ? s : {};
-  s.settings = { showSat: false, showP6: false, periods: DEFAULT_PERIODS.map((p) => [...p]), manaba: '', ...(s.settings || {}) };
+  s.settings = { showSat: false, showP6: false, periods: DEFAULT_PERIODS.map((p) => [...p]), ...(s.settings || {}) };
+  delete s.settings.manaba; // 以前のmanabaのURL（機能をなくしたので捨てる）
+  for (const c of s.courses || []) delete c.manaba;
   if (!Array.isArray(s.settings.periods) || s.settings.periods.length < 6) s.settings.periods = DEFAULT_PERIODS.map((p) => [...p]);
   s.courses = Array.isArray(s.courses) ? s.courses : [];
   s.view = { ...cur, ...(s.view || {}) };
@@ -123,9 +125,6 @@ function render() {
   renderTasks();
   renderStats();
   renderBackup();
-  const m = safeUrl(state.settings.manaba);
-  $('#manabaLink').hidden = !m;
-  if (m) $('#manabaLink').href = m;
 }
 
 function renderGrid() {
@@ -400,7 +399,6 @@ function openDetail(id) {
       ${safeUrl(c.syllabus)
         ? `<a class="btn primary big" href="${esc(safeUrl(c.syllabus))}">📖 シラバスを開く</a>`
         : `<button class="btn primary big" id="findSyllabus">🔎 シラバス検索で探す</button>`}
-      ${safeUrl(c.manaba) ? `<a class="btn big" href="${esc(safeUrl(c.manaba))}">manaba を開く</a>` : ''}
     </div>
     ${candBox(c)}
     ${safeUrl(c.syllabus) ? '' : '<p class="hint">科目名をコピーしてからシラバス検索を開きます。見つけた授業のURLを「編集」で貼っておくと、次からはすぐ開けます。</p>'}
@@ -610,15 +608,12 @@ $('#welcome').addEventListener('cancel', (e) => { e.preventDefault(); finishWelc
 
 // ---- リンク（スマホの「🔗」） ----
 function renderLinks() {
-  const m = safeUrl(state.settings.manaba);
   const items = [
     ['🔎 シラバス検索', SYLLABUS_SEARCH, true],
     ['学務系ポータル', 'https://gakumuweb01.kuas.kagoshima-u.ac.jp/portal/'],
-    ...(m ? [['manaba', m]] : []),
     ['鹿大トップ', 'https://www.kagoshima-u.ac.jp/'],
   ];
-  $('#linkList').innerHTML = items.map(([label, url, primary]) => `<a class="btn big${primary ? ' primary' : ''}" href="${esc(url)}">${esc(label)}</a>`).join('')
-    + (m ? '' : '<p class="hint">manaba のリンクは、設定でURLを入れると、ここに出ます。</p>');
+  $('#linkList').innerHTML = items.map(([label, url, primary]) => `<a class="btn big${primary ? ' primary' : ''}" href="${esc(url)}">${esc(label)}</a>`).join('');
 }
 $('#openLinks').addEventListener('click', () => { renderLinks(); $('#linksSheet').showModal(); });
 $('#linksSheet').addEventListener('click', (e) => { if (e.target === $('#linksSheet') || e.target.closest('[data-close]')) $('#linksSheet').close(); });
@@ -732,7 +727,7 @@ async function addOffer(id, intensive = false) {
   const base = {
     id: uid(), sid: String(r[0]), name: r[1], teacher: r[2], room: '', code: '', credits: r[8] ?? '',
     category: r[3] === KYOTSU ? '共通教育' : r[3] === KYOSHOKU ? '教職' : '専門',
-    syllabus: data.detail + r[0], manaba: '', sessions: r[9] || 15, memo: '', year,
+    syllabus: data.detail + r[0], sessions: r[9] || 15, memo: '', year,
     absences: 0, tasks: [],
   };
   if (intensive) {
@@ -909,7 +904,7 @@ function openEditor(course, notice) {
   f.reset();
   $('#editTitle').textContent = editing ? '授業を編集' : '授業を追加';
   $('#deleteCourse').hidden = !editing;
-  for (const k of ['name', 'teacher', 'room', 'code', 'credits', 'syllabus', 'manaba', 'sessions', 'memo', 'term', 'category', 'start', 'end']) {
+  for (const k of ['name', 'teacher', 'room', 'code', 'credits', 'syllabus', 'sessions', 'memo', 'term', 'category', 'start', 'end']) {
     if (f.elements[k]) f.elements[k].value = c[k] ?? '';
   }
   if (!c.term) f.elements.term.value = state.view.term;
@@ -1043,7 +1038,7 @@ $('#editForm').addEventListener('submit', (e) => {
   const data = {
     name: v('name'), teacher: v('teacher'), room: v('room'), code: v('code'),
     credits: v('credits') === '' ? '' : Number(v('credits')),
-    term, category: v('category'), syllabus: safeUrl(v('syllabus')), manaba: safeUrl(v('manaba')),
+    term, category: v('category'), syllabus: safeUrl(v('syllabus')),
     sessions: Number(v('sessions')) || 15, memo: f.elements.memo.value.trim(),
     slots: term === '集中' ? [] : [...pickedSlots].sort((a, b) => a.d - b.d || a.p - b.p).map((sl) => {
       // 上の「教室」と違うコマだけ、コマの教室を持つ
@@ -1081,7 +1076,6 @@ function renderSettings() {
   const s = state.settings;
   $('#showSat').checked = s.showSat;
   $('#showP6').checked = s.showP6;
-  $('#manabaUrl').value = s.manaba || '';
   const ago = s.lastExport ? daysSince(s.lastExport) : null;
   const le = s.lastExport ? new Date(s.lastExport) : null;
   $('#backupInfo').textContent = le ? `前回の書き出し：${le.getFullYear()}年${le.getMonth() + 1}月${le.getDate()}日（${ago === 0 ? '今日' : `${ago}日前`}）` : 'まだ書き出していません。';
@@ -1128,7 +1122,6 @@ $('#themeColors').addEventListener('click', (e) => {
 });
 $('#showSat').addEventListener('change', (e) => { state.settings.showSat = e.target.checked; save(); render(); });
 $('#showP6').addEventListener('change', (e) => { state.settings.showP6 = e.target.checked; save(); render(); });
-$('#manabaUrl').addEventListener('change', (e) => { state.settings.manaba = e.target.value.trim(); save(); render(); });
 // 「850」「8:50」「８：５０」「08:50」→「08:50」。時刻でなければ null
 function parseHM(v) {
   const t = toHalf(v).replace(/[：.]/g, ':').trim();
