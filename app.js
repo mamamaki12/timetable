@@ -1,4 +1,4 @@
-import { DAYS, extractCourse, pairsFromText, decodeImport, parseTerm } from './parse.js';
+import { DAYS, extractCourse, pairsFromText, decodeImport, parseTerm, toHalf } from './parse.js';
 
 const KEY = 'kadai-jikanwari-v1';
 const SYLLABUS_SEARCH = 'https://syllabus11.kuas.kagoshima-u.ac.jp/showSearch';
@@ -71,6 +71,21 @@ function toast(msg, action) {
   toast.timer = setTimeout(() => t.classList.remove('show'), action ? 6000 : 2600);
 }
 
+// 元に戻せる操作：操作の前の状態を覚えておき、通知の「元に戻す」で復元する（確認の画面は出さない）
+function withUndo(message, change) {
+  const before = JSON.stringify(state);
+  change();
+  save(); render();
+  toast(message, { label: '元に戻す', run: () => {
+    state = JSON.parse(before);
+    save(); render();
+    // 開いている画面も、元に戻した内容にする
+    if ($('#slotSheet').open) openSlot(slotKey);
+    if ($('#detail').open) { if (state.courses.some((c) => c.id === detailId)) openDetail(detailId); else $('#detail').close(); }
+    if ($('#settings').open) renderSettings();
+  } });
+}
+
 // ---- 表示する授業 ----
 // 「集中」タブでは集中講義だけ、前期・後期では その学期と通年の授業
 const isIntensiveView = () => state.view.term === '集中';
@@ -105,6 +120,7 @@ function render() {
   }
   renderTasks();
   renderStats();
+  renderBackup();
   const m = safeUrl(state.settings.manaba);
   $('#manabaLink').hidden = !m;
   if (m) $('#manabaLink').href = m;
@@ -326,8 +342,7 @@ function renderNow() {
   const block = (label, c, p, extra) => `
     <button class="now-item c${themeColor()}" data-id="${c.id}">
       <span class="now-label">${label} ・ ${p}限 ${ps[p - 1][0]}〜${ps[p - 1][1]}${extra ? ` ・ ${extra}` : ''}</span>
-      <span class="now-name">${esc(c.name)}</span>
-      <span class="now-room">${esc(c.room || '教室未設定')}</span>
+      <span class="now-name">${esc(c.name)}<small class="now-room"> ・ ${esc(c.room || '教室未設定')}</small></span>
     </button>`;
   let h = '';
   if (nowC) h += block('いま', nowC, cp.p, `残り${cp.left}分`);
@@ -534,13 +549,62 @@ function loadOffers(year) {
 const offerTerm = (data, row) => parseTerm(data.sems[row[4]] || '');
 
 // 学部・学年の選択肢を入れる（学部→大学院の順）。選んだものは設定に覚えておく
+function deptOptionsHtml(data, selected) {
+  const entries = Object.entries(data.depts).filter(([c]) => c !== KYOTSU && c !== KYOSHOKU)
+    .sort((a, b) => /研究科/.test(a[1]) - /研究科/.test(b[1]));
+  return `<option value="">共通教育だけ</option>${entries.map(([c, n]) => `<option value="${esc(c)}"${selected === c ? ' selected' : ''}>${esc(n)}</option>`).join('')}<option value="*"${selected === '*' ? ' selected' : ''}>すべての学部</option>`;
+}
+const gradeOptionsHtml = (selected, allLabel = 'すべて') => `<option value="">${allLabel}</option>${[1, 2, 3, 4, 5, 6].map((g) => `<option value="${g}"${String(selected || '') === String(g) ? ' selected' : ''}>${g}年</option>`).join('')}`;
 function fillOfferFilters(scope, data) {
   const sel = $('.offer-dept', scope);
   if (sel.options.length) return;
-  const entries = Object.entries(data.depts).filter(([c]) => c !== KYOTSU && c !== KYOSHOKU)
-    .sort((a, b) => /研究科/.test(a[1]) - /研究科/.test(b[1]));
-  sel.innerHTML = `<option value="">共通教育だけ</option>${entries.map(([c, n]) => `<option value="${esc(c)}"${state.settings.dept === c ? ' selected' : ''}>${esc(n)}</option>`).join('')}<option value="*"${state.settings.dept === '*' ? ' selected' : ''}>すべての学部</option>`;
+  sel.innerHTML = deptOptionsHtml(data, state.settings.dept);
 }
+// 年度ごとの一覧が無くても、学部の名前が分かる一覧（今の年度、なければ一番新しい年度）
+async function loadAnyOffers() {
+  const idx = await fetch('data/index.json').then((r) => (r.ok ? r.json() : { years: [] })).catch(() => ({ years: [] }));
+  const y = idx.years.some((x) => x.year === state.view.year) ? state.view.year : idx.years[0]?.year;
+  return y ? loadOffers(y) : null;
+}
+
+// ---- はじめて開いたとき：学部・学年を聞く ----
+async function maybeWelcome() {
+  const s = state.settings;
+  if (s.welcomed) return;
+  if (state.courses.length || s.dept !== undefined) { s.welcomed = true; save(); return; } // 前から使っている人には出さない
+  if (document.querySelector('dialog[open]')) return;
+  const data = await loadAnyOffers();
+  if (!data || document.querySelector('dialog[open]')) return; // 一覧が読めないときは聞かない
+  $('#welcomeDept').innerHTML = deptOptionsHtml(data, s.dept ?? '');
+  $('#welcomeGrade').innerHTML = gradeOptionsHtml('1', 'すべて');
+  $('#welcome').showModal();
+}
+function finishWelcome(save_) {
+  const s = state.settings;
+  s.welcomed = true;
+  if (save_) { s.dept = $('#welcomeDept').value; s.grade = $('#welcomeGrade').value; }
+  save(); render();
+  $('#welcome').close();
+  if (save_) toast('設定しました。空いたコマの「＋」から、授業を選んで入れられます');
+}
+$('#welcomeForm').addEventListener('submit', (e) => { e.preventDefault(); finishWelcome(true); });
+$('#welcomeSkip').addEventListener('click', () => finishWelcome(false));
+$('#welcome').addEventListener('cancel', (e) => { e.preventDefault(); finishWelcome(false); });
+
+// ---- リンク（スマホの「🔗」） ----
+function renderLinks() {
+  const m = safeUrl(state.settings.manaba);
+  const items = [
+    ['🔎 シラバス検索', SYLLABUS_SEARCH, true],
+    ['学務系ポータル', 'https://gakumuweb01.kuas.kagoshima-u.ac.jp/portal/'],
+    ...(m ? [['manaba', m]] : []),
+    ['鹿大トップ', 'https://www.kagoshima-u.ac.jp/'],
+  ];
+  $('#linkList').innerHTML = items.map(([label, url, primary]) => `<a class="btn big${primary ? ' primary' : ''}" href="${esc(url)}">${esc(label)}</a>`).join('')
+    + (m ? '' : '<p class="hint">manaba のリンクは、設定でURLを入れると、ここに出ます。</p>');
+}
+$('#openLinks').addEventListener('click', () => { renderLinks(); $('#linksSheet').showModal(); });
+$('#linksSheet').addEventListener('click', (e) => { if (e.target === $('#linksSheet') || e.target.closest('[data-close]')) $('#linksSheet').close(); });
 function offerFiltersHtml(queryValue, extra = '') {
   return `<div class="offer-filters">
     <label>学部<select class="offer-dept"></select></label>
@@ -680,10 +744,9 @@ $('#slotSheet').addEventListener('click', async (e) => {
     if (!decided) openSlot(slotKey);
   } else if (t.id === 'dropOthers') {
     const drop = overlapping(decided).filter(isCand);
-    state.courses = state.courses.filter((x) => !drop.includes(x));
     decided = null;
-    save(); render(); openSlot(slotKey);
-    toast(`候補を${drop.length}件消しました`);
+    withUndo(`候補を${drop.length}件消しました`, () => { state.courses = state.courses.filter((x) => !drop.includes(x)); });
+    openSlot(slotKey);
   } else if (t.id === 'keepOthers') {
     decided = null;
     openSlot(slotKey);
@@ -814,11 +877,10 @@ $('#editor').addEventListener('click', (e) => {
       : `${n}項目を読み取りました。内容を確かめて保存してください`);
     if (n) $('#importBox').open = false;
   } else if (b.id === 'deleteCourse') {
-    if (!editing || !confirm(`「${editing.name}」を消しますか？`)) return;
-    state.courses = state.courses.filter((x) => x.id !== editing.id);
-    save(); render();
+    if (!editing) return;
+    const gone = editing;
     $('#editor').close();
-    toast('消しました');
+    withUndo(`「${gone.name}」を消しました`, () => { state.courses = state.courses.filter((x) => x.id !== gone.id); });
   }
 });
 
@@ -845,7 +907,6 @@ $('#editForm').addEventListener('submit', (e) => {
   const f = e.target;
   const v = (k) => f.elements[k].value.trim();
   const term = v('term');
-  if (term !== '集中' && !pickedSlots.length && !confirm('曜日・時限が選ばれていません。このまま保存しますか？（時間割の下の「曜日・時限が決まっていない授業」に入ります）')) return;
   const data = {
     name: v('name'), teacher: v('teacher'), room: v('room'), code: v('code'),
     credits: v('credits') === '' ? '' : Number(v('credits')),
@@ -870,6 +931,7 @@ $('#editForm').addEventListener('submit', (e) => {
   save(); render();
   $('#editor').close();
   toast(bumped.length ? `保存しました（${bumped.map((x) => `「${x.name}」`).join('')}は候補にもどしました）`
+    : term !== '集中' && !data.slots.length ? '保存しました。曜日・時限がないので、時間割の下の「曜日・時限が決まっていない授業」に入っています'
     : data.status === 'cand' ? '候補として保存しました' : '保存しました');
 });
 
@@ -879,9 +941,14 @@ function renderSettings() {
   $('#showSat').checked = s.showSat;
   $('#showP6').checked = s.showP6;
   $('#manabaUrl').value = s.manaba || '';
+  const ago = s.lastExport ? daysSince(s.lastExport) : null;
+  const le = s.lastExport ? new Date(s.lastExport) : null;
+  $('#backupInfo').textContent = le ? `前回の書き出し：${le.getFullYear()}年${le.getMonth() + 1}月${le.getDate()}日（${ago === 0 ? '今日' : `${ago}日前`}）` : 'まだ書き出していません。';
   $('#themeColors').innerHTML = Array.from({ length: COLORS }, (_, i) => `<button type="button" role="radio" class="swatch c${i}${i === themeColor() ? ' on' : ''}" data-theme="${i}" aria-checked="${i === themeColor()}" aria-label="${COLOR_NAMES[i]}"></button>`).join('');
+  // 時刻は「08:50」のような24時間の文字で入れる（端末の言語によって「AM/PM」になる時刻の欄は使わない）
+  const timeIn = (i, j, v, label) => `<input type="text" class="time-in" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="08:50" data-pi="${i}" data-pj="${j}" value="${v}" aria-label="${i + 1}限の${label}">`;
   $('#periodEditor').innerHTML = s.periods.map((p, i) => `
-    <div class="period-row"><b>${i + 1}限</b><span class="pair"><input type="time" data-pi="${i}" data-pj="0" value="${p[0]}" aria-label="${i + 1}限の始まり"> 〜 <input type="time" data-pi="${i}" data-pj="1" value="${p[1]}" aria-label="${i + 1}限の終わり"></span></div>`).join('');
+    <div class="period-row"><b>${i + 1}限</b><span class="pair">${timeIn(i, 0, p[0], '始まり')} 〜 ${timeIn(i, 1, p[1], '終わり')}</span></div>`).join('');
   const bm = bookmarklet();
   $('#bookmarklet').href = bm;
 }
@@ -896,12 +963,22 @@ function bookmarklet() {
   return 'javascript:' + src;
 }
 
-$('#openSettings').addEventListener('click', () => { renderSettings(); $('#settings').showModal(); });
+$('#openSettings').addEventListener('click', async () => {
+  renderSettings();
+  $('#settings').showModal();
+  // 学部の選択肢は一覧のデータから作る（読めなければ、選べないだけ）
+  const data = await loadAnyOffers();
+  $('#setDept').innerHTML = data ? deptOptionsHtml(data, state.settings.dept ?? '') : '<option value="">（一覧を読み込めません）</option>';
+  $('#setDept').disabled = !data;
+  $('#setGrade').innerHTML = gradeOptionsHtml(state.settings.grade, 'すべて');
+});
 $('#settings').addEventListener('click', (e) => {
   if (e.target === $('#settings') || e.target.closest('[data-close]')) $('#settings').close();
 });
 $('#bookmarklet').addEventListener('click', (e) => { e.preventDefault(); toast('ブックマークバーにドラッグしてください'); });
 $('#copyBookmarklet').addEventListener('click', () => copy(bookmarklet(), 'コピーしました。ブックマークを作り、URLの欄に貼り付けてください'));
+$('#setDept').addEventListener('change', (e) => { state.settings.dept = e.target.value; save(); });
+$('#setGrade').addEventListener('change', (e) => { state.settings.grade = e.target.value; save(); });
 $('#themeColors').addEventListener('click', (e) => {
   const b = e.target.closest('[data-theme]');
   if (!b) return;
@@ -911,35 +988,72 @@ $('#themeColors').addEventListener('click', (e) => {
 $('#showSat').addEventListener('change', (e) => { state.settings.showSat = e.target.checked; save(); render(); });
 $('#showP6').addEventListener('change', (e) => { state.settings.showP6 = e.target.checked; save(); render(); });
 $('#manabaUrl').addEventListener('change', (e) => { state.settings.manaba = e.target.value.trim(); save(); render(); });
+// 「850」「8:50」「８：５０」「08:50」→「08:50」。時刻でなければ null
+function parseHM(v) {
+  const t = toHalf(v).replace(/[：.]/g, ':').trim();
+  const m = t.match(/^(\d{1,2}):(\d{2})$/) || t.match(/^(\d{1,2})(\d{2})$/);
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return null;
+  return `${m[1].padStart(2, '0')}:${m[2]}`;
+}
 $('#periodEditor').addEventListener('change', (e) => {
   const i = e.target.dataset.pi;
-  if (i === undefined || !e.target.value) return;
-  state.settings.periods[i][e.target.dataset.pj] = e.target.value;
+  if (i === undefined) return;
+  const j = e.target.dataset.pj;
+  const hm = parseHM(e.target.value);
+  if (!hm) {
+    e.target.value = state.settings.periods[i][j];
+    toast('時刻は、「8:50」「13:30」のように24時間で入力してください');
+    return;
+  }
+  e.target.value = hm;
+  state.settings.periods[i][j] = hm;
   save(); render();
 });
 $('#resetPeriods').addEventListener('click', () => {
   state.settings.periods = DEFAULT_PERIODS.map((p) => [...p]);
   save(); render(); renderSettings();
 });
-$('#exportData').addEventListener('click', () => {
+// データの書き出し（機種変更・バックアップ用）。書き出した日を覚えておく
+function exportData() {
+  state.settings.lastExport = new Date().toISOString();
+  save();
   const blob = new Blob([JSON.stringify({ app: 'kadai-jikanwari', ...state }, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `鹿大じかんわり-${new Date().toISOString().slice(0, 10)}.json`;
+  // 日本語の名前だと、ブラウザによっては「download」（拡張子なし）になり、あとで読み込めなくなるので、英数字だけにする
+  a.download = `kadai-jikanwari-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  render();
+  if ($('#settings').open) renderSettings();
+  toast('書き出しました。ダウンロードしたファイルを、安全な場所に保存してください');
+}
+$('#exportData').addEventListener('click', exportData);
+$('#backupNow').addEventListener('click', exportData);
+$('#backupLater').addEventListener('click', () => {
+  state.settings.backupSnooze = new Date(Date.now() + 14 * 86400000).toISOString();
+  save(); render();
 });
+
+const daysSince = (iso) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+// 授業が3つ以上入っていて、1か月以上書き出していないときだけ、お知らせを出す（「あとで」で2週間は出さない）
+function renderBackup() {
+  const s = state.settings;
+  const due = state.courses.length >= 3 && (!s.lastExport || daysSince(s.lastExport) >= 30)
+    && !(s.backupSnooze && new Date(s.backupSnooze).getTime() > Date.now());
+  $('#backupNotice').hidden = !due;
+}
 $('#importFile').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
   try {
     const data = JSON.parse(await file.text());
     if (!Array.isArray(data.courses)) throw new Error();
-    if (!confirm(`${data.courses.length}件の授業を読み込みます。今のデータは置き換わります。よろしいですか？`)) return;
-    localStorage.setItem(KEY, JSON.stringify(data));
-    state = load();
-    render(); renderSettings();
-    toast('読み込みました');
+    withUndo(`${data.courses.length}件の授業を読み込みました（今までのデータと置き換わりました）`, () => {
+      localStorage.setItem(KEY, JSON.stringify(data));
+      state = load();
+    });
+    renderSettings();
   } catch {
     toast('このファイルは読み込めませんでした');
   } finally {
@@ -948,10 +1062,10 @@ $('#importFile').addEventListener('change', async (e) => {
 });
 $('#clearTerm').addEventListener('click', () => {
   const n = viewCourses().filter((c) => c.term !== '通年').length;
-  if (!n || !confirm(`${state.view.year}年度${state.view.term}の授業${n}件を消します。よろしいですか？`)) return;
-  state.courses = state.courses.filter((c) => !(inView(c) && c.term !== '通年'));
-  save(); render();
-  toast('消しました');
+  if (!n) { toast('この学期には、消す授業がありません'); return; }
+  withUndo(`${state.view.year}年度${state.view.term}の授業${n}件を消しました`, () => {
+    state.courses = state.courses.filter((c) => !(inView(c) && c.term !== '通年'));
+  });
 });
 
 // ---- 画面の操作 ----
@@ -1025,6 +1139,7 @@ function handleIncoming() {
 
 render();
 handleIncoming();
+maybeWelcome();
 setInterval(() => { if (!document.hidden) { renderNow(); renderGrid(); } }, 30000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
 

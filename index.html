@@ -14,7 +14,10 @@
 </head>
 <body>
   <header class="top">
-    <span class="logo" aria-hidden="true">鹿</span>
+    <div class="top-left">
+      <span class="logo" aria-hidden="true">鹿</span>
+      <button class="icon-btn" id="openLinks" aria-label="リンク（シラバス検索・学務系ポータルなど）" title="リンク">🔗</button>
+    </div>
     <div class="titles">
       <h1 id="pageTitle">鹿大じかんわり</h1>
       <p class="sub">鹿大じかんわり</p>
@@ -68,6 +71,12 @@
     </div>
 
     <aside class="side">
+      <section class="panel backup" id="backupNotice" hidden>
+        <h2>データのバックアップ</h2>
+        <p>データは、この端末のブラウザの中だけに保存されています。機種変更や、ブラウザのデータを消したときに備えて、ときどき書き出しておきましょう。</p>
+        <div class="actions"><button class="btn primary" id="backupNow">書き出す</button><button class="btn" id="backupLater">あとで</button></div>
+      </section>
+
       <section class="panel">
         <h2>課題・提出物</h2>
         <ul class="task-list" id="allTasks"></ul>
@@ -160,6 +169,35 @@
     <datalist id="roomList"></datalist>
   </dialog>
 
+  <!-- はじめて開いたとき -->
+  <dialog id="welcome" class="sheet">
+    <form method="dialog" class="sheet-body" id="welcomeForm">
+      <div class="sheet-head"><h2>はじめに</h2></div>
+      <p>鹿児島大学の時間割アプリです。学部と学年を選ぶと、空いたコマの「＋」に、あなたが履修できる授業が出ます。</p>
+      <div class="row">
+        <label>学部<select id="welcomeDept"></select></label>
+        <label>学年<select id="welcomeGrade"></select></label>
+      </div>
+      <p class="hint">あとから、設定でいつでも変えられます。データはこの端末の中だけに保存されます。</p>
+      <div class="actions">
+        <button type="button" class="btn" id="welcomeSkip">あとで</button>
+        <span class="spacer"></span>
+        <button type="submit" class="btn primary">はじめる</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- リンク（スマホでは、上の列のかわりにここへ） -->
+  <dialog id="linksSheet" class="sheet">
+    <div class="sheet-body">
+      <div class="sheet-head">
+        <h2>リンク</h2>
+        <button type="button" class="icon-btn" data-close aria-label="閉じる">✕</button>
+      </div>
+      <div class="link-list" id="linkList"></div>
+    </div>
+  </dialog>
+
   <!-- 設定 -->
   <dialog id="settings" class="sheet">
     <div class="sheet-body">
@@ -171,6 +209,12 @@
       <h3>表示</h3>
       <label class="check"><input type="checkbox" id="showSat"> 土曜日を出す</label>
       <label class="check"><input type="checkbox" id="showP6"> 6限を出す</label>
+      <h3>学部・学年</h3>
+      <p class="hint">「＋」の一覧に出す授業を絞り込みます。</p>
+      <div class="row">
+        <label>学部<select id="setDept"></select></label>
+        <label>学年<select id="setGrade"></select></label>
+      </div>
       <h3>時間割の色</h3>
       <div class="colors" id="themeColors" role="radiogroup" aria-label="時間割の色"></div>
 
@@ -189,6 +233,7 @@
 
       <h3>データ</h3>
       <p class="hint">データはこの端末のブラウザの中だけに保存されます。機種変更のときは書き出して、新しい端末で読み込んでください。</p>
+      <p class="backup-info" id="backupInfo"></p>
       <div class="actions wrap">
         <button class="btn" id="exportData">書き出す</button>
         <label class="btn file-btn">読み込む<input type="file" id="importFile" accept="application/json,.json" hidden></label>

@@ -138,12 +138,12 @@ main { max-width: 90rem; margin: 0 auto; padding: 0 var(--gutter) 40px; }
 .now-card { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr)); gap: 8px; margin-bottom: 10px; }
 .now-card[hidden] { display: none; }
 .now-item {
-  text-align: left; border: 0; border-radius: var(--radius); padding: 10px 14px; min-width: 0;
+  text-align: left; border: 0; border-radius: var(--radius); padding: 8px 12px; min-width: 0;
   background: var(--cb); color: var(--ci); display: grid; gap: 1px;
 }
 .now-label { font-size: .75rem; font-weight: 700; opacity: .85; }
 .now-name { font-size: 1.0625rem; font-weight: 800; line-height: 1.3; }
-.now-room { font-size: .8125rem; }
+.now-room { font-size: .8125rem; font-weight: 600; opacity: .9; }
 .now-empty { margin: 0; padding: 12px 14px; background: var(--surface); border-radius: var(--radius); color: var(--muted); font-size: .875rem; grid-column: 1 / -1; }
 
 /* ---- リンク（はみ出す分は横にスクロール） ---- */
@@ -413,3 +413,23 @@ label.check input { width: 1.3rem; height: 1.3rem; }
 
 .task-list .due { white-space: nowrap; }
 .task-list small .link-like { min-height: 0; padding: .3em .1em; }
+
+/* ---- スマホ：上の列のリンクは「🔗」にまとめて、時間割を上に寄せる ---- */
+.top-left { display: flex; align-items: center; }
+#openLinks { display: none; font-size: 1.25rem; }
+@media (max-width: 40em) {
+  .links { display: none; }
+  .logo { display: none; }
+  #openLinks { display: inline-grid; place-items: center; color: var(--text); }
+}
+.link-list { display: grid; gap: 8px; }
+.link-list .btn { text-align: left; }
+
+/* ---- バックアップのお知らせ・設定の書き出し ---- */
+.backup { border-left: 4px solid var(--accent); }
+.backup p { margin: 0 0 10px; font-size: .875rem; }
+.backup .actions { margin-top: 0; }
+.backup-info { margin: 0; font-size: .875rem; font-weight: 600; }
+
+/* ---- 授業時間（24時間の文字で入れる） ---- */
+.time-in { text-align: center; font-variant-numeric: tabular-nums; }
