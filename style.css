@@ -91,39 +91,36 @@ a { color: var(--accent); }
 
 /* ---- 上の帯 ---- */
 .top {
-  display: grid; grid-template-columns: 2.5rem minmax(0, 1fr) 2.5rem; align-items: center; gap: 8px;
-  padding: calc(10px + env(safe-area-inset-top)) var(--gutter) 6px;
+  display: flex; align-items: center; gap: 2px;
+  padding: calc(8px + env(safe-area-inset-top)) var(--gutter) 4px;
   max-width: 90rem; margin: 0 auto;
 }
+.titlebar { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 2px; }
 .titles { min-width: 0; text-align: center; }
 .logo {
   width: 2.25rem; height: 2.25rem; border-radius: 10px;
   background: var(--accent); color: var(--accent-ink);
   display: grid; place-items: center; font-weight: 800; font-size: 1.1875rem;
 }
-h1 { font-size: clamp(1rem, 5.6vw, 1.375rem); font-weight: 800; margin: 0; letter-spacing: .02em; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* タイトルは「2026年度」と「後期」の間で、必要なら2行に折り返す（途中で切れたり、「…」にしたりしない） */
+h1 { font-size: clamp(1rem, 5.6vw, 1.375rem); font-weight: 800; margin: 0; letter-spacing: .02em; line-height: 1.25; text-wrap: balance; overflow-wrap: normal; word-break: keep-all; }
 .sub { margin: 0; font-size: .75rem; color: var(--muted); line-height: 1.4; }
 .icon-btn {
   flex: none; border: 0; background: transparent; min-width: 2.5rem; min-height: 2.5rem; border-radius: 50%;
-  font-size: 1.25rem; color: var(--muted); line-height: 1;
+  font-size: 1.25rem; color: var(--muted); line-height: 1; display: inline-grid; place-items: center; padding: 0;
 }
+.icon-btn svg { display: block; }
+#prevYear, #nextYear { color: var(--text); }
 .icon-btn:hover { background: var(--surface-2); }
 
-.terms {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-  padding: 4px var(--gutter) 8px; max-width: 90rem; margin: 0 auto;
-}
-.year { font-weight: 700; text-align: center; white-space: nowrap; padding: 0 2px; }
-.year-btn {
-  border: 0; background: var(--surface-2); min-width: 2.5rem; min-height: 2.5rem; border-radius: 10px;
-  font-size: 1.125rem; line-height: 1;
-}
-.seg { margin-left: auto; display: flex; background: var(--surface-2); border-radius: 10px; padding: 3px; }
+/* 前期・後期・集中：画面の幅いっぱいを3等分 */
+.terms { padding: 2px var(--gutter) 8px; max-width: 90rem; margin: 0 auto; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface-2); border-radius: 12px; padding: 3px; gap: 2px; }
 .seg button {
-  border: 0; background: transparent; padding: .5em 1em; min-height: 2.25rem; border-radius: 8px; font-weight: 600; color: var(--muted);
-  white-space: nowrap;
+  border: 0; background: transparent; padding: .5em .3em; min-height: 2.5rem; border-radius: 9px; font-weight: 700; color: var(--muted);
+  white-space: nowrap; font-size: .9375rem;
 }
-.seg button[aria-selected="true"] { background: var(--surface); color: var(--accent); box-shadow: 0 1px 3px rgb(0 0 0 / .12); }
+.seg button[aria-selected="true"] { background: var(--surface); color: var(--accent); box-shadow: 0 1px 3px rgb(0 0 0 / .14); }
 
 main { max-width: 90rem; margin: 0 auto; padding: 0 var(--gutter) 40px; }
 /* 広い画面では、時間割を左に広くとり、課題・集計を右に並べる */
@@ -386,7 +383,6 @@ label.check input { width: 1.3rem; height: 1.3rem; }
 @media (max-width: 26.25em) {
   .cname { font-size: .75rem; }
   .croom { font-size: .5625rem; }
-  .seg button { padding: .3em .75em; }
 }
 
 /* ---- このコマに開講されている授業 ---- */
@@ -414,13 +410,14 @@ label.check input { width: 1.3rem; height: 1.3rem; }
 .task-list small .link-like { min-height: 0; padding: .3em .1em; }
 
 /* ---- スマホ：上の列のリンクは「🔗」にまとめて、時間割を上に寄せる ---- */
-.top-left { display: flex; align-items: center; }
-#openLinks { display: none; font-size: 1.25rem; }
+/* 広い画面は、左にロゴ、リンクは上の列。スマホは、左上の「リンク」ボタンにまとめる */
+#openLinks { display: none; }
 @media (max-width: 40em) {
   .links { display: none; }
   .logo { display: none; }
-  #openLinks { display: inline-grid; place-items: center; color: var(--text); }
+  #openLinks { display: inline-grid; color: var(--text); }
 }
+@media (min-width: 40.0625em) { .top .logo { margin-right: 4px; } }
 .link-list { display: grid; gap: 8px; }
 .link-list .btn { text-align: left; }
 

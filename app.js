@@ -106,7 +106,6 @@ const overlapping = (c, slots = c.slots || []) => viewCourses().filter((x) => x.
 
 function render() {
   const { year, term } = state.view;
-  $('#yearLabel').textContent = `${year}年度`;
   $('#pageTitle').textContent = `${year}年度 ${term}`;
   $$('.seg button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.term === term)));
   const intensive = isIntensiveView();
