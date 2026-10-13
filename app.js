@@ -170,6 +170,7 @@ function renderGrid() {
   }
   $('#grid').innerHTML = h + '</tbody>';
   $('#grid').style.setProperty('--days', days);
+  $('#grid').style.setProperty('--rows', periods);
 }
 
 const openTaskCount = (c) => (c.tasks || []).filter((t) => !t.done).length;

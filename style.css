@@ -92,7 +92,7 @@ a { color: var(--accent); }
 /* ---- 上の帯 ---- */
 .top {
   display: flex; align-items: center; gap: 2px;
-  padding: calc(8px + env(safe-area-inset-top)) var(--gutter) 4px;
+  padding: calc(4px + env(safe-area-inset-top)) var(--gutter) 2px;
   max-width: 90rem; margin: 0 auto;
 }
 .titlebar { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 2px; }
@@ -104,7 +104,6 @@ a { color: var(--accent); }
 }
 /* タイトルは「2026年度」と「後期」の間で、必要なら2行に折り返す（途中で切れたり、「…」にしたりしない） */
 h1 { font-size: clamp(1rem, 5.6vw, 1.375rem); font-weight: 800; margin: 0; letter-spacing: .02em; line-height: 1.25; text-wrap: balance; overflow-wrap: normal; word-break: keep-all; }
-.sub { margin: 0; font-size: .75rem; color: var(--muted); line-height: 1.4; }
 .icon-btn {
   flex: none; border: 0; background: transparent; min-width: 2.5rem; min-height: 2.5rem; border-radius: 50%;
   font-size: 1.25rem; color: var(--muted); line-height: 1; display: inline-grid; place-items: center; padding: 0;
@@ -114,10 +113,10 @@ h1 { font-size: clamp(1rem, 5.6vw, 1.375rem); font-weight: 800; margin: 0; lette
 .icon-btn:hover { background: var(--surface-2); }
 
 /* 前期・後期・集中：画面の幅いっぱいを3等分 */
-.terms { padding: 2px var(--gutter) 8px; max-width: 90rem; margin: 0 auto; }
+.terms { padding: 2px var(--gutter) 6px; max-width: 90rem; margin: 0 auto; }
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface-2); border-radius: 12px; padding: 3px; gap: 2px; }
 .seg button {
-  border: 0; background: transparent; padding: .5em .3em; min-height: 2.5rem; border-radius: 9px; font-weight: 700; color: var(--muted);
+  border: 0; background: transparent; padding: .35em .3em; min-height: 2.25rem; border-radius: 9px; font-weight: 700; color: var(--muted);
   white-space: nowrap; font-size: .9375rem;
 }
 .seg button[aria-selected="true"] { background: var(--surface); color: var(--accent); box-shadow: 0 1px 3px rgb(0 0 0 / .14); }
@@ -161,6 +160,8 @@ main { max-width: 90rem; margin: 0 auto; padding: 0 var(--gutter) 40px; }
   overflow-x: auto; overscroll-behavior-x: contain;
 }
 .grid {
+  /* コマの高さ：画面の高さ（バーが出ているときの高さ）から、上の部分を引いて、行の数で割る。入りきらないときは下限で止め、ページを下にスクロールする */
+  --cell-h: clamp(4.75rem, calc((100svh - 14.25rem) / var(--rows, 5)), 6.25rem);
   --ph: 1.3rem; /* 時限の列：数字と、縦に並べた開始時刻（時／分）が入る幅。文字を大きくすると、一緒に広がる */
   width: 100%;
   border-collapse: separate; border-spacing: 4px; table-layout: fixed;
@@ -173,13 +174,13 @@ main { max-width: 90rem; margin: 0 auto; padding: 0 var(--gutter) 40px; }
 .ph { text-align: center; vertical-align: middle; color: var(--muted); padding: 0; }
 .ph b { display: block; font-size: 1.125rem; font-weight: 800; color: var(--muted-strong); line-height: 1.2; }
 .ph small { display: flex; flex-direction: column; align-items: center; margin-top: 2px; font-size: .625rem; line-height: 1.2; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.cell { height: 6.25rem; padding: 0; vertical-align: top; border-radius: 12px; background: var(--surface); }
+.cell { height: var(--cell-h); padding: 0; vertical-align: top; border-radius: 12px; background: var(--surface); }
 .cell.today { background: var(--today); }
 .cell.live, .cell.live .course { box-shadow: inset 0 0 0 2px var(--live); }
-.cell > button { width: 100%; height: 100%; min-height: 6.25rem; }
+.cell > button { width: 100%; height: 100%; min-height: var(--cell-h); }
 .empty { border: 0; background: transparent; color: transparent; font-size: 1.125rem; border-radius: 12px; }
 .empty:hover, .empty:focus-visible { color: var(--muted); background: rgb(127 127 127 / .08); }
-.stack { display: flex; flex-direction: column; gap: 3px; height: 100%; min-height: 6.25rem; }
+.stack { display: flex; flex-direction: column; gap: 3px; height: 100%; min-height: var(--cell-h); }
 .course {
   border: 0; border-radius: 12px; padding: 6px 4px 5px; text-align: center;
   background: var(--cb); color: var(--ci); display: flex; flex-direction: column; align-items: center; gap: 4px;
