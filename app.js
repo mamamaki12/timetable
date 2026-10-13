@@ -12,10 +12,8 @@ const DEFAULT_PERIODS = [
   ['16:10', '17:40'],
   ['17:50', '19:20'],
 ];
-const COLORS = 8;
-const COLOR_NAMES = ['ピンク', 'オレンジ', '黄', '緑', '水色', '青', '紫', 'グレー'];
-// 時間割の授業は、設定で選んだ1色にそろえる（初めは青）
-const themeColor = () => (Number.isInteger(state.settings?.color) ? state.settings.color : 5);
+// 時間割の授業は、すべて青の1色
+const THEME = 5;
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -34,7 +32,8 @@ function load() {
   try { s = JSON.parse(localStorage.getItem(KEY)); } catch { s = null; }
   const cur = currentTerm();
   s = s && typeof s === 'object' ? s : {};
-  s.settings = { showSat: false, showP6: false, periods: DEFAULT_PERIODS.map((p) => [...p]), ...(s.settings || {}) };
+  s.settings = { periods: DEFAULT_PERIODS.map((p) => [...p]), ...(s.settings || {}) };
+  for (const k of ['showSat', 'showP6', 'color', 'backupSnooze']) delete s.settings[k]; // なくした設定
   delete s.settings.manaba; // 以前のmanabaのURL（機能をなくしたので捨てる）
   for (const c of s.courses || []) delete c.manaba;
   if (!Array.isArray(s.settings.periods) || s.settings.periods.length < 6) s.settings.periods = DEFAULT_PERIODS.map((p) => [...p]);
@@ -96,8 +95,9 @@ const roomOf = (c, d, p) => { const s = c.slots?.find((x) => x.d === d && x.p ==
 const isIntensiveView = () => state.view.term === '集中';
 const inView = (c) => c.year === state.view.year && (isIntensiveView() ? c.term === '集中' : c.term === state.view.term || c.term === '通年');
 const viewCourses = () => state.courses.filter(inView);
-const dayCount = () => (state.settings.showSat || viewCourses().some((c) => c.slots?.some((s) => s.d === 5)) ? 6 : 5);
-const periodCount = () => (state.settings.showP6 || viewCourses().some((c) => c.slots?.some((s) => s.p >= 6)) ? 6 : 5);
+// 土曜・6限は、授業が入っているときだけ表に出る
+const dayCount = () => (viewCourses().some((c) => c.slots?.some((s) => s.d === 5)) ? 6 : 5);
+const periodCount = () => (viewCourses().some((c) => c.slots?.some((s) => s.p >= 6)) ? 6 : 5);
 // status が 'cand' の授業は「候補」。表では薄く出し、単位や「いま・つぎ」には入れない
 const isCand = (c) => c.status === 'cand';
 const allAt = (d, p) => viewCourses().filter((c) => c.term !== '集中' && c.slots?.some((s) => s.d === d && s.p === p));
@@ -124,7 +124,6 @@ function render() {
   }
   renderTasks();
   renderStats();
-  renderBackup();
 }
 
 function renderGrid() {
@@ -152,12 +151,12 @@ function renderGrid() {
         // 候補だけのコマ：候補の数と名前を出し、タップで比べる画面へ
         h += `<td class="${cls}"><button class="cand-cell" data-slot-list="${d}-${p}" aria-label="${DAYS[d]}曜${p}限の候補${cands.length}件">
           <span class="cand-count">候補${cands.length}</span>
-          ${cands.slice(0, 3).map((c) => `<span class="cand-name c${themeColor()}">${esc(c.name)}</span>`).join('')}
+          ${cands.slice(0, 3).map((c) => `<span class="cand-name c${THEME}">${esc(c.name)}</span>`).join('')}
         </button></td>`;
       } else {
         h += `<td class="${cls}"><div class="stack">`;
         for (const c of cs) {
-          h += `<button class="course c${themeColor()}${cs.length > 1 ? ' clash' : ''}" data-id="${c.id}">
+          h += `<button class="course c${THEME}${cs.length > 1 ? ' clash' : ''}" data-id="${c.id}">
             <span class="cname">${esc(c.name)}</span>
             <span class="croom${roomOf(c, d, p) ? '' : ' empty'}" data-room-edit="${c.id}:${d}-${p}">${esc(roomOf(c, d, p)) || '教室'}</span>
             ${absenceBadge(c) || openTaskCount(c) ? `<span class="meta">${openTaskCount(c) ? `<span class="dot" title="未提出の課題">課${openTaskCount(c)}</span>` : ''}${absenceBadge(c)}</span>` : ''}
@@ -183,7 +182,7 @@ function absenceBadge(c) {
   return `<span class="abs ${lvl}">欠${a}</span>`;
 }
 
-const courseLine = (c, sub) => `<li><button class="course-line c${themeColor()}${isCand(c) ? ' cand' : ''}" data-id="${c.id}"><b>${isCand(c) ? '<span class="badge">候補</span>' : ''}${esc(c.name)}</b><small>${esc(sub.filter(Boolean).join(' ・ '))}</small></button></li>`;
+const courseLine = (c, sub) => `<li><button class="course-line c${THEME}${isCand(c) ? ' cand' : ''}" data-id="${c.id}"><b>${isCand(c) ? '<span class="badge">候補</span>' : ''}${esc(c.name)}</b><small>${esc(sub.filter(Boolean).join(' ・ '))}</small></button></li>`;
 
 // 前期・後期で、曜日・時限が入っていない授業（あるときだけ出す）
 function renderExtra() {
@@ -343,7 +342,7 @@ function renderNow() {
     return;
   }
   const block = (label, c, p, extra) => `
-    <button class="now-item c${themeColor()}" data-id="${c.id}">
+    <button class="now-item c${THEME}" data-id="${c.id}">
       <span class="now-label">${label} ・ ${p}限 ${ps[p - 1][0]}〜${ps[p - 1][1]}${extra ? ` ・ ${extra}` : ''}</span>
       <span class="now-name">${esc(c.name)}<small class="now-room"> ・ ${esc(roomOf(c, d, p) || '教室未設定')}</small></span>
     </button>`;
@@ -385,7 +384,7 @@ function openDetail(id) {
   const tasks = c.tasks || [];
   $('#detailBody').innerHTML = `
     <div class="sheet-head">
-      <h2 class="detail-title c${themeColor()}">${isCand(c) ? '<span class="badge">候補</span>' : ''}${esc(c.name)}</h2>
+      <h2 class="detail-title c${THEME}">${isCand(c) ? '<span class="badge">候補</span>' : ''}${esc(c.name)}</h2>
       <button type="button" class="icon-btn" data-close aria-label="閉じる">✕</button>
     </div>
     <dl class="facts">
@@ -520,7 +519,7 @@ function openSlot(key) {
     </div>` : ''}
     ${list.length ? `<p class="hint">${list.filter(isCand).length ? '候補を比べて「これにする」で決めます。候補は単位の合計に入りません。' : '下の「このコマの授業」から候補を入れておけます。'}</p>` : ''}
     ${list.length ? `<ul class="slot-list">
-      ${list.map((c) => `<li class="slot-item c${themeColor()}${isCand(c) ? ' cand' : ''}">
+      ${list.map((c) => `<li class="slot-item c${THEME}${isCand(c) ? ' cand' : ''}">
         <button class="slot-main" data-open="${c.id}">
           <span class="badge${isCand(c) ? '' : ' take'}">${isCand(c) ? '候補' : '履修'}</span>
           <b>${esc(c.name)}</b>
@@ -946,8 +945,8 @@ $('#slotRooms').addEventListener('input', (e) => {
 $('#editForm').elements.room.addEventListener('input', () => { if (!$('#slotRooms').hidden) renderSlotRooms(); });
 
 function renderSlotPicker() {
-  const days = Math.max(dayCount(), pickedSlots.some((s) => s.d === 5) ? 6 : 0);
-  const periods = Math.max(periodCount(), ...pickedSlots.map((s) => s.p));
+  const days = 6;
+  const periods = 6;
   let h = `<div class="sp" style="--cols:${days}"><span></span>`;
   for (let d = 0; d < days; d++) h += `<span class="sp-h">${DAYS[d]}</span>`;
   for (let p = 1; p <= periods; p++) {
@@ -1074,12 +1073,9 @@ $('#editForm').addEventListener('submit', (e) => {
 // ---- 設定 ----
 function renderSettings() {
   const s = state.settings;
-  $('#showSat').checked = s.showSat;
-  $('#showP6').checked = s.showP6;
   const ago = s.lastExport ? daysSince(s.lastExport) : null;
   const le = s.lastExport ? new Date(s.lastExport) : null;
   $('#backupInfo').textContent = le ? `前回の書き出し：${le.getFullYear()}年${le.getMonth() + 1}月${le.getDate()}日（${ago === 0 ? '今日' : `${ago}日前`}）` : 'まだ書き出していません。';
-  $('#themeColors').innerHTML = Array.from({ length: COLORS }, (_, i) => `<button type="button" role="radio" class="swatch c${i}${i === themeColor() ? ' on' : ''}" data-theme="${i}" aria-checked="${i === themeColor()}" aria-label="${COLOR_NAMES[i]}"></button>`).join('');
   // 時刻は「08:50」のような24時間の文字で入れる（端末の言語によって「AM/PM」になる時刻の欄は使わない）
   const timeIn = (i, j, v, label) => `<input type="text" class="time-in" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="08:50" data-pi="${i}" data-pj="${j}" value="${v}" aria-label="${i + 1}限の${label}">`;
   $('#periodEditor').innerHTML = s.periods.map((p, i) => `
@@ -1114,14 +1110,6 @@ $('#bookmarklet').addEventListener('click', (e) => { e.preventDefault(); toast('
 $('#copyBookmarklet').addEventListener('click', () => copy(bookmarklet(), 'コピーしました。ブックマークを作り、URLの欄に貼り付けてください'));
 $('#setDept').addEventListener('change', (e) => { state.settings.dept = e.target.value; save(); });
 $('#setGrade').addEventListener('change', (e) => { state.settings.grade = e.target.value; save(); });
-$('#themeColors').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-theme]');
-  if (!b) return;
-  state.settings.color = Number(b.dataset.theme);
-  save(); render(); renderSettings();
-});
-$('#showSat').addEventListener('change', (e) => { state.settings.showSat = e.target.checked; save(); render(); });
-$('#showP6').addEventListener('change', (e) => { state.settings.showP6 = e.target.checked; save(); render(); });
 // 「850」「8:50」「８：５０」「08:50」→「08:50」。時刻でなければ null
 function parseHM(v) {
   const t = toHalf(v).replace(/[：.]/g, ':').trim();
@@ -1163,20 +1151,8 @@ function exportData() {
   toast('書き出しました。ダウンロードしたファイルを、安全な場所に保存してください');
 }
 $('#exportData').addEventListener('click', exportData);
-$('#backupNow').addEventListener('click', exportData);
-$('#backupLater').addEventListener('click', () => {
-  state.settings.backupSnooze = new Date(Date.now() + 14 * 86400000).toISOString();
-  save(); render();
-});
 
 const daysSince = (iso) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
-// 授業が3つ以上入っていて、1か月以上書き出していないときだけ、お知らせを出す（「あとで」で2週間は出さない）
-function renderBackup() {
-  const s = state.settings;
-  const due = state.courses.length >= 3 && (!s.lastExport || daysSince(s.lastExport) >= 30)
-    && !(s.backupSnooze && new Date(s.backupSnooze).getTime() > Date.now());
-  $('#backupNotice').hidden = !due;
-}
 $('#importFile').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
