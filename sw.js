@@ -1,5 +1,5 @@
 // 一度開いたら、電波のない教室でも時間割を見られるようにする（ネットワーク優先・つながらなければキャッシュ）
-const CACHE = 'kadai-jikanwari-v25';
+const CACHE = 'kadai-jikanwari-v26';
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'parse.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', (e) => {
@@ -16,7 +16,7 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
   e.respondWith((async () => {
     try {
-      const res = await fetch(req);
+      const res = await fetch(req, { cache: 'no-cache' });
       if (res.ok && res.type === 'basic') { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
       return res;
     } catch {
