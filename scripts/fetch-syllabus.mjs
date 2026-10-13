@@ -5,6 +5,7 @@
 //   node scripts/fetch-syllabus.mjs 2026       年度を指定
 //
 // 相手のサーバーに負担をかけないよう、一覧は1回に500件ずつ、1秒以上あけて取りに行く（1年度で10回ほど）。
+// 学科・プログラムは、それぞれで1回ずつ（1秒あけて）検索する（1年度で150〜200回ほど）。
 // 単位数と授業回数は一覧に出ないので、授業ごとの詳しいページを1件ずつ（約1秒あけて）開いて読む。
 // 読んだ値は data/details.json に覚えておき、次からは新しく増えた授業のページだけを開く。
 // DETAIL_MINUTES（分）を指定すると、詳しいページを読む時間をそれまでに区切る（続きは次の回に読む）。
@@ -59,9 +60,9 @@ async function openSearch() {
   return { token, data: JSON.parse(decodeEntities(m[1])) };
 }
 
-async function searchPage(token, year, firstRowNo) {
+async function searchPage(token, year, firstRowNo, programCodes = []) {
   const body = {
-    languageClass: 1, academicYear: year, courseCode: '', programCodes: [], dayCodes: [], timeCodes: [],
+    languageClass: 1, academicYear: year, courseCode: '', programCodes, dayCodes: [], timeCodes: [],
     overview: '', syllabusName: '', syllabusNameEn: '', syllabusClassCode: '', formCode: '', directOnlineCode: '',
     teacher: '', workExperienceCode: '', firstRowNo, perPage: String(PER_PAGE), semesterCode: '', yearCodes: [],
   };
@@ -119,7 +120,28 @@ const encodeTimes = (s) => [...new Set(String(s || '').split(/\s+/).filter(Boole
 const encodeYears = (s) => [...new Set(toHalf(s).match(/\d(?=年)/g) || [])].join('');
 const cleanTeacher = (s) => String(s || '').replace(/[（(]代表者?[）)]/g, '').replace(/\s+/g, ' ').trim();
 
-async function fetchYear(token, year, courseList, details) {
+// 学科・プログラムごとに検索して、どの授業がどの学科・プログラムのものかを調べる（一覧の行には載っていないため）
+async function fetchPrograms(token, year, programList) {
+  const progs = programList.filter((p) => p.academic_year === year).sort((a, b) => a.display_order - b.display_order || a.code.localeCompare(b.code));
+  const idsOf = new Map();
+  for (const p of progs) {
+    const ids = [];
+    let total = Infinity;
+    for (let first = 0; first < total; first += PER_PAGE) {
+      const page = await searchPage(token, year, first, [p.code]);
+      total = page.searchedCount;
+      // 番号が別の部局と重なっていることがあるので、部局も合わせる
+      ids.push(...page.syllabusList.filter((r) => r.academic_year === year && r.course_code === p.course_code).map((r) => r.id));
+      await sleep(1000);
+      if (!page.syllabusList.length) break;
+    }
+    if (ids.length) idsOf.set(p, ids);
+  }
+  console.log(`  ${year}年度: 学科・プログラム ${idsOf.size}件`);
+  return idsOf;
+}
+
+async function fetchYear(token, year, courseList, programList, details) {
   const rows = [];
   let total = Infinity;
   for (let first = 0; first < total; first += PER_PAGE) {
@@ -140,12 +162,20 @@ async function fetchYear(token, year, courseList, details) {
     return i;
   };
   const mine = rows.filter((r) => r.academic_year === year);
+  // progs：[[学科・プログラムの番号, 名前, 開設部局], …]。行の最後に、その授業の学科・プログラム（progs の何番目か）を並べる
+  const idsOf = await fetchPrograms(token, year, programList);
+  const progs = [];
+  const progsOf = new Map();
+  for (const [p, ids] of idsOf) {
+    const i = progs.push([p.code, p.name, p.course_code]) - 1;
+    for (const id of ids) progsOf.set(id, [...(progsOf.get(id) || []), i]);
+  }
   await fillDetails(mine.map((r) => r.id), details);
-  // [シラバスの番号, 科目名, 担当教員, 開設部局, 学期, 曜日, 時限, 学年, 単位数, 授業回数]（単位数・授業回数は分からなければ null）
+  // [シラバスの番号, 科目名, 担当教員, 開設部局, 学期, 曜日, 時限, 学年, 単位数, 授業回数, 学科・プログラム]（単位数・授業回数は分からなければ null）
   const list = mine
-    .map((r) => [r.id, r.syllabus_name, cleanTeacher(r.teacher), r.course_code, semIndex(r.semester_name), encodeDays(r.day_name), encodeTimes(r.time_name), encodeYears(r.year_name), ...(details[r.id] || [null, null])])
+    .map((r) => [r.id, r.syllabus_name, cleanTeacher(r.teacher), r.course_code, semIndex(r.semester_name), encodeDays(r.day_name), encodeTimes(r.time_name), encodeYears(r.year_name), ...(details[r.id] || [null, null]), progsOf.get(r.id) || []])
     .sort((a, b) => a[0] - b[0]);
-  return { year, source: `${BASE}/showSearch`, detail: `${BASE}/showDetail/ja/`, fetchedAt: new Date().toISOString(), depts, sems, rows: list };
+  return { year, source: `${BASE}/showSearch`, detail: `${BASE}/showDetail/ja/`, fetchedAt: new Date().toISOString(), depts, sems, progs, rows: list };
 }
 
 const { token, data } = await openSearch();
@@ -160,7 +190,7 @@ fs.mkdirSync(OUT, { recursive: true });
 const details = loadDetails();
 const index = [];
 for (const year of years) {
-  const result = await fetchYear(token, year, data.courseList, details);
+  const result = await fetchYear(token, year, data.courseList, data.programList, details);
   if (!result.rows.length) { console.log(`  ${year}年度: 0件なので書き出しません`); continue; }
   fs.writeFileSync(path.join(OUT, `syllabus-${year}.json`), JSON.stringify(result));
   index.push({ year, count: result.rows.length, fetchedAt: result.fetchedAt });

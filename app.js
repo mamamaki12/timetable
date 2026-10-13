@@ -234,7 +234,7 @@ async function renderIntensiveOffers() {
   fillOfferFilters($('#intFilters'), data);
   const q = intQuery.trim().toLowerCase();
   // 曜日か時限に「集中・不定など」がある授業
-  const rows = sortOffers(data.rows.filter((r) => (r[5].includes('x') || r[6].includes('x'))
+  const rows = sortOffers(data, data.rows.filter((r) => (r[5].includes('x') || r[6].includes('x'))
     && (!intSem || [intSem, '通年'].includes(offerTerm(data, r))) && offerMatches(r, q)));
   box.innerHTML = offerListHtml(data, rows, {
     note: `${year}年度${intSem ? intSem : ''}`,
@@ -535,10 +535,19 @@ function deptOptionsHtml(data, selected) {
   return `<option value="">共通教育だけ</option>${entries.map(([c, n]) => `<option value="${esc(c)}"${selected === c ? ' selected' : ''}>${esc(n)}</option>`).join('')}<option value="*"${selected === '*' ? ' selected' : ''}>すべての学部</option>`;
 }
 const gradeOptionsHtml = (selected, allLabel = 'すべて') => `<option value="">${allLabel}</option>${[1, 2, 3, 4, 5, 6].map((g) => `<option value="${g}"${String(selected || '') === String(g) ? ' selected' : ''}>${g}年</option>`).join('')}`;
+// 学科・プログラムの選択肢（選んだ学部のもの）。無い学部では、欄ごと隠す
+// 「先進工学科（情報・生体工学ＰＧ）」→「情報・生体工学ＰＧ」のように、かっこの中がプログラム・コース・分野なら、そこだけ（欄が狭いため）
+const progShort = (n) => (n.match(/^[^（]+（(.+(?:ＰＧ|プログラム|コース|分野))）$/)?.[1] || n).replace(/ＰＧ/g, 'PG');
+const deptProgs = (data, dept) => (data?.progs || []).filter((p) => p[2] === dept);
+function fillProgSelect(sel, data, dept, selected) {
+  const list = deptProgs(data, dept);
+  sel.innerHTML = `<option value="">指定しない</option>${list.map(([c, n]) => `<option value="${esc(c)}"${selected === c ? ' selected' : ''}>${esc(progShort(n))}</option>`).join('')}`;
+  sel.closest('label').hidden = !list.length;
+}
 function fillOfferFilters(scope, data) {
   const sel = $('.offer-dept', scope);
-  if (sel.options.length) return;
-  sel.innerHTML = deptOptionsHtml(data, state.settings.dept);
+  if (!sel.options.length) sel.innerHTML = deptOptionsHtml(data, state.settings.dept);
+  fillProgSelect($('.offer-prog', scope), data, state.settings.dept || '', state.settings.prog || '');
 }
 // 年度ごとの一覧が無くても、学部の名前が分かる一覧（今の年度、なければ一番新しい年度）
 async function loadAnyOffers() {
@@ -556,13 +565,15 @@ async function maybeWelcome() {
   const data = await loadAnyOffers();
   if (!data || document.querySelector('dialog[open]')) return; // 一覧が読めないときは聞かない
   $('#welcomeDept').innerHTML = deptOptionsHtml(data, s.dept ?? '');
+  fillProgSelect($('#welcomeProg'), data, $('#welcomeDept').value, '');
+  $('#welcomeDept').onchange = () => fillProgSelect($('#welcomeProg'), data, $('#welcomeDept').value, '');
   $('#welcomeGrade').innerHTML = gradeOptionsHtml('1', 'すべて');
   $('#welcome').showModal();
 }
 function finishWelcome(save_) {
   const s = state.settings;
   s.welcomed = true;
-  if (save_) { s.dept = $('#welcomeDept').value; s.grade = $('#welcomeGrade').value; }
+  if (save_) { s.dept = $('#welcomeDept').value; s.prog = $('#welcomeProg').value; s.grade = $('#welcomeGrade').value; }
   save(); render();
   $('#welcome').close();
   if (save_) toast('設定しました。空いたコマの「＋」から、授業を選んで入れられます');
@@ -585,6 +596,7 @@ $('#linksSheet').addEventListener('click', (e) => { if (e.target === $('#linksSh
 function offerFiltersHtml(queryValue, extra = '') {
   return `<div class="offer-filters">
     <label>学部<select class="offer-dept"></select></label>
+    <label class="prog" hidden>学科・プログラム<select class="offer-prog"></select></label>
     <label>学年<select class="offer-grade">
       <option value="">すべて</option>${[1, 2, 3, 4, 5, 6].map((g) => `<option value="${g}"${String(state.settings.grade || '') === String(g) ? ' selected' : ''}>${g}年</option>`).join('')}
     </select></label>
@@ -600,10 +612,23 @@ function offerMatches(r, q) {
     && (!grade || !r[7] || r[7].includes(grade))
     && (!q || `${r[1]} ${r[2]}`.toLowerCase().includes(q));
 }
-// 自分の学部 → 共通教育 → そのほか、の順
-function sortOffers(rows) {
+// 自分の学科・プログラム → 学部（ほかの学科・プログラムだけの授業を除く）と共通教育 → 学部のほかの学科・プログラム → そのほか、の順
+const myProgIndex = (data) => {
+  const { dept, prog } = state.settings;
+  return prog ? (data.progs || []).findIndex((p) => p[0] === prog && p[2] === dept) : -1;
+};
+// 「（工学部共通）」「先進工学科（学科共通）」のような、学部・学科の全員向けの区分
+const isCommonProg = (p) => /共通/.test(p[1]);
+function sortOffers(data, rows) {
   const dept = state.settings.dept || '';
-  const rank = (r) => (r[3] === dept ? 0 : r[3] === KYOTSU ? 1 : 2);
+  const mine = myProgIndex(data);
+  const rank = (r) => {
+    if (mine >= 0 && r[10]?.includes(mine)) return 0;
+    if (r[3] === KYOTSU) return 1;
+    if (r[3] !== dept) return 3;
+    if (mine < 0 || !r[10]?.length || r[10].some((i) => isCommonProg(data.progs[i]))) return 1;
+    return 2;
+  };
   return rows.sort((a, b) => rank(a) - rank(b) || a[1].localeCompare(b[1], 'ja'));
 }
 const deptLabel = (data, code) => (code === KYOTSU ? '共通教育' : data.depts[code] || '');
@@ -620,6 +645,7 @@ function offerListHtml(data, rows, { note, showSem, slotsText = true, empty, lim
     return '<span class="added">追加済み</span>';
   };
   const shown = rows.slice(0, limit);
+  const mineProg = myProgIndex(data);
   if (!rows.length) return `<p class="hint">${empty}</p>`;
   return `<p class="hint">${rows.length}件${rows.length > shown.length && !more ? `（はじめの${shown.length}件。「さがす」で絞り込めます）` : ''}${note ? `・${note}` : ''}</p>
     <ul class="slot-list">${shown.map((r) => {
@@ -628,7 +654,7 @@ function offerListHtml(data, rows, { note, showSem, slotsText = true, empty, lim
         ? `${[...r[5]].map((x) => DAYS[x] || 'ほか').join('')} ${[...r[6]].filter((x) => x !== 'x').join('・')}${r[6].replace('x', '') ? '限' : ''}${r[6].includes('x') && r[6] !== 'x' ? 'ほか' : ''}` : '';
       return `<li class="offer-item">
         <div class="offer-main">
-          <b>${esc(r[1])}</b>
+          <b>${esc(r[1])}</b>${mineProg >= 0 && r[10]?.includes(mineProg) ? '<span class="prog-tag">あなたの学科</span>' : ''}
           <small>${esc([shortTeachers(r[2]), deptLabel(data, r[3]), showSem(sem) ? sem : '', r[7] ? `${r[7].split('').join('・')}年` : '', r[8] != null ? `${r[8]}単位` : '', when].filter(Boolean).join(' ・ '))}</small>
         </div>
         <div class="slot-acts">
@@ -657,7 +683,7 @@ async function renderOffers() {
   if (!data) { box.innerHTML = noDataHtml(year, '「✎ 一覧にない授業を自分で入力」'); return; }
   fillOfferFilters($('#slotSheet'), data);
   const q = offerQuery.trim().toLowerCase();
-  const rows = sortOffers(data.rows.filter((r) => r[5].includes(String(d)) && r[6].includes(String(p))
+  const rows = sortOffers(data, data.rows.filter((r) => r[5].includes(String(d)) && r[6].includes(String(p))
     && slotsOfOffer(r, d, p).slots.some((x) => x.d === d && x.p === p)
     && [term, '通年'].includes(offerTerm(data, r)) && offerMatches(r, q)));
   const dept = state.settings.dept || '';
@@ -834,7 +860,8 @@ $('#slotSheet').addEventListener('close', () => { decided = null; });
 // 学部・学年・さがす（時間割のコマの画面と、集中のページで共通）
 function onOfferFilter(e, rerender) {
   const t = e.target;
-  if (t.classList.contains('offer-dept')) state.settings.dept = t.value;
+  if (t.classList.contains('offer-dept')) { state.settings.dept = t.value; state.settings.prog = ''; }
+  else if (t.classList.contains('offer-prog')) state.settings.prog = t.value;
   else if (t.classList.contains('offer-grade')) state.settings.grade = t.value;
   else return false;
   save();
@@ -1067,6 +1094,8 @@ $('#openSettings').addEventListener('click', async () => {
   const data = await loadAnyOffers();
   $('#setDept').innerHTML = data ? deptOptionsHtml(data, state.settings.dept ?? '') : '<option value="">（一覧を読み込めません）</option>';
   $('#setDept').disabled = !data;
+  setData = data;
+  fillProgSelect($('#setProg'), data, state.settings.dept || '', state.settings.prog || '');
   $('#setGrade').innerHTML = gradeOptionsHtml(state.settings.grade, 'すべて');
 });
 $('#settings').addEventListener('click', (e) => {
@@ -1074,7 +1103,12 @@ $('#settings').addEventListener('click', (e) => {
 });
 $('#bookmarklet').addEventListener('click', (e) => { e.preventDefault(); toast('ブックマークバーにドラッグしてください'); });
 $('#copyBookmarklet').addEventListener('click', () => copy(bookmarklet(), 'コピーしました。ブックマークを作り、URLの欄に貼り付けてください'));
-$('#setDept').addEventListener('change', (e) => { state.settings.dept = e.target.value; save(); });
+let setData = null;
+$('#setDept').addEventListener('change', (e) => {
+  state.settings.dept = e.target.value; state.settings.prog = ''; save();
+  fillProgSelect($('#setProg'), setData, state.settings.dept, '');
+});
+$('#setProg').addEventListener('change', (e) => { state.settings.prog = e.target.value; save(); });
 $('#setGrade').addEventListener('change', (e) => { state.settings.grade = e.target.value; save(); });
 // 「850」「8:50」「８：５０」「08:50」→「08:50」。時刻でなければ null
 function parseHM(v) {

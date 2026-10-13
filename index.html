@@ -167,10 +167,11 @@
   <dialog id="welcome" class="sheet">
     <form method="dialog" class="sheet-body" id="welcomeForm">
       <div class="sheet-head"><h2>はじめに</h2></div>
-      <p>鹿児島大学の時間割アプリです。学部と学年を選ぶと、空いたコマの「＋」に、あなたが履修できる授業が出ます。</p>
+      <p>鹿児島大学の時間割アプリです。学部・学科と学年を選ぶと、空いたコマの「＋」に、あなたが履修できる授業が出ます。</p>
       <div class="row">
         <label>学部<select id="welcomeDept"></select></label>
         <label>学年<select id="welcomeGrade"></select></label>
+        <label class="prog" hidden>学科・プログラム<select id="welcomeProg"></select></label>
       </div>
       <p class="hint">あとから、設定でいつでも変えられます。データはこの端末の中だけに保存されます。</p>
       <div class="actions">
@@ -200,11 +201,12 @@
         <button type="button" class="icon-btn" data-close aria-label="閉じる">✕</button>
       </div>
 
-      <h3>学部・学年</h3>
-      <p class="hint">「＋」の一覧に出す授業を絞り込みます。</p>
+      <h3>学部・学科・学年</h3>
+      <p class="hint">「＋」の一覧に出す授業を絞り込みます。学科・プログラムを選ぶと、その授業を一覧の先頭に出します。</p>
       <div class="row">
         <label>学部<select id="setDept"></select></label>
         <label>学年<select id="setGrade"></select></label>
+        <label class="prog" hidden>学科・プログラム<select id="setProg"></select></label>
       </div>
 
       <h3>授業時間</h3>

@@ -370,7 +370,12 @@ label.check input { width: 1.3rem; height: 1.3rem; }
 .offers h3 { margin-bottom: 0; }
 .offer-filters { display: flex; flex-wrap: wrap; gap: 6px 8px; }
 .offer-filters label { display: grid; gap: 2px; font-size: .75rem; font-weight: 600; color: var(--muted); flex: 1 1 6rem; min-width: 0; }
-.offer-filters label.grow { flex: 2 1 10rem; }
+.offer-filters label.grow { flex: 2 1 10rem; order: 1; }
+/* 学科・プログラム：名前が長いので、「さがす」と同じ行に広めにとる */
+.offer-filters label.prog { flex: 2 1 12rem; order: 1; }
+label.prog[hidden] { display: none; }
+.row > label.prog { grid-column: 1 / -1; }
+.prog-tag { display: inline-block; justify-self: start; width: fit-content; margin-left: 6px; padding: 1px 6px; border-radius: 6px; font-size: .6875rem; font-weight: 700; vertical-align: 2px; background: var(--accent); color: var(--accent-ink); }
 .offer-filters[hidden] { display: none; }
 .offer-list { display: grid; gap: 6px; }
 .offer-item {
