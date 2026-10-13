@@ -705,7 +705,7 @@ async function addOffer(id, intensive = false) {
   const { slots, clear } = slotsOfOffer(r, d, p);
   const busy = slots.some((s) => courseAt(s.d, s.p).length);
   state.courses.push({ ...base, term: offerTerm(data, r) || state.view.term, slots, status: busy ? 'cand' : 'take' });
-  save(); render(); openSlot(slotKey);
+  save(); render(); $('#slotSheet').close();
   toast(`「${r[1]}」を${busy ? '候補に' : '時間割に'}入れました${clear ? '' : `（${DAYS[d]}${p}限だけ。ほかのコマは授業の画面の「編集」で）`}`);
 }
 
