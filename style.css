@@ -91,34 +91,35 @@ a { color: var(--accent); }
 
 /* ---- 上の帯（1行：年度の矢印・前期/後期/集中・リンク・設定） ---- */
 .top {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; font-size: min(1rem, 16px);
   padding: calc(4px + env(safe-area-inset-top)) var(--gutter) 6px;
   max-width: 90rem; margin: 0 auto;
   container-type: inline-size;
 }
 .yearnav { display: flex; align-items: center; flex: none; }
-.year { font-weight: 800; font-size: .9375rem; white-space: nowrap; }
+.year { font-weight: 800; font-size: .9375em; white-space: nowrap; }
 .tools { display: flex; flex: none; margin-left: auto; }
 .icon-btn {
-  flex: none; border: 0; background: transparent; min-width: 2.25rem; min-height: 2.5rem; border-radius: 50%;
-  font-size: 1.25rem; color: var(--muted); line-height: 1; display: inline-grid; place-items: center; padding: 0;
+  flex: none; border: 0; background: transparent; min-width: 2em; min-height: 2.5em; border-radius: 50%;
+  font-size: 1.25em; color: var(--muted); line-height: 1; display: inline-grid; place-items: center; padding: 0;
 }
 .icon-btn svg { display: block; }
-#prevYear, #nextYear { color: var(--text); min-width: 2rem; }
+#prevYear, #nextYear { color: var(--text); min-width: 2em; }
 .icon-btn:hover { background: var(--surface-2); }
 
-/* 前期・後期・集中：あいた幅を3等分（広い画面では、幅を広げすぎない） */
-.seg { flex: 1 1 0; min-width: 8rem; max-width: 22rem; display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface-2); border-radius: 12px; padding: 3px; gap: 2px; }
-/* 幅が足りないとき（文字を大きくしたときも）は、2行にする：1行目＝年度とリンク・設定、2行目＝前期/後期/集中 */
-@container (max-width: 21.5rem) {
-  .tools { order: 1; }
-  .seg { order: 2; flex: 1 1 100%; max-width: none; }
+/* 前期→後期→集中と順に切り替えるボタン（押すたびに矢印が回る） */
+.term-btn {
+  flex: none; display: inline-flex; align-items: center; gap: .3em; border: 0; border-radius: 12px; background: var(--surface-2);
+  color: var(--accent); font-weight: 800; font-size: 1em; padding: 0 .55em; min-height: 2.25em; white-space: nowrap; margin: 0 auto 0 2px;
 }
-.seg button {
-  border: 0; background: transparent; padding: .35em .3em; min-height: 2.25rem; border-radius: 9px; font-weight: 700; color: var(--muted);
-  white-space: nowrap; font-size: .9375rem;
-}
-.seg button[aria-selected="true"] { background: var(--surface); color: var(--accent); box-shadow: 0 1px 3px rgb(0 0 0 / .14); }
+.term-btn svg { flex: none; transition: transform .3s; }
+.term-main { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; line-height: 1.1; }
+.term-dots { display: flex; gap: 3px; }
+.term-dots i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .25; }
+.term-dots i.on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .term-btn svg { transition: none; } }
+.year small { font-size: inherit; }
+@container (max-width: 20rem) { .year small { display: none; } }
 
 main { max-width: 90rem; margin: 0 auto; padding: 0 var(--gutter) 40px; }
 /* 広い画面では、時間割を左に広くとり、課題・集計を右に並べる */

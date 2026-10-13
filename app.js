@@ -108,9 +108,14 @@ const overlapping = (c, slots = c.slots || []) => viewCourses().filter((x) => x.
 
 function render() {
   const { year, term } = state.view;
-  $('#yearLabel').textContent = `${year}年度`;
+  $('#yearLabel').innerHTML = `${year}<small>年度</small>`;
   $('#pageTitle').textContent = `${year}年度 ${term}の時間割`;
-  $$('.seg button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.term === term)));
+  const tb = $('#termCycle'), terms = ['前期', '後期', '集中'], ti = terms.indexOf(term);
+  tb.dataset.term = term;
+  $('#termLabel').textContent = term;
+  tb.setAttribute('aria-label', `学期：${term}。押すと${terms[(ti + 1) % 3]}に切り替えます`);
+  $$('.term-dots i').forEach((d, i) => d.classList.toggle('on', i === ti));
+  tb.firstElementChild.style.transform = `rotate(${ti * 120}deg)`;
   const intensive = isIntensiveView();
   $('#gridWrap').hidden = intensive;
   $('#intensive').hidden = !intensive;
@@ -1155,8 +1160,9 @@ document.addEventListener('click', (e) => {
     openSlot(b.dataset.slotList);
   } else if (b.dataset.id) {
     openDetail(b.dataset.id);
-  } else if (b.dataset.term) {
-    state.view.term = b.dataset.term;
+  } else if (b.id === 'termCycle') {
+    const terms = ['前期', '後期', '集中'];
+    state.view.term = terms[(terms.indexOf(state.view.term) + 1) % 3];
     save(); render();
   } else if (b.id === 'prevYear' || b.id === 'nextYear') {
     state.view.year += b.id === 'prevYear' ? -1 : 1;
