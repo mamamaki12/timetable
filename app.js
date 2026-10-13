@@ -108,19 +108,18 @@ const overlapping = (c, slots = c.slots || []) => viewCourses().filter((x) => x.
 
 function render() {
   const { year, term } = state.view;
-  $('#pageTitle').textContent = `${year}年度 ${term}`;
+  $('#yearLabel').textContent = `${year}年度`;
+  $('#pageTitle').textContent = `${year}年度 ${term}の時間割`;
   $$('.seg button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.term === term)));
   const intensive = isIntensiveView();
   $('#gridWrap').hidden = intensive;
   $('#intensive').hidden = !intensive;
   if (intensive) {
-    $('#nowCard').hidden = true;
     $('#extraPanel').hidden = true;
     renderIntensive();
   } else {
     renderGrid();
     renderExtra();
-    renderNow();
   }
   renderTasks();
   renderStats();
@@ -305,7 +304,7 @@ function renderStats() {
     ${nCand ? `<p class="cats">ほかに候補が${nCand}件あります（合計には入れていません）</p>` : ''}`;
 }
 
-// ---- 今の授業・次の授業 ----
+// ---- いまのコマ（表の中で強調する） ----
 const toMin = (hm) => { const [h, m] = hm.split(':').map(Number); return h * 60 + m; };
 function currentPeriod(now = new Date()) {
   const t = now.getHours() * 60 + now.getMinutes();
@@ -316,45 +315,6 @@ function currentPeriod(now = new Date()) {
     if (t < s) return { p: i + 1, during: false, until: s - t };
   }
   return null;
-}
-
-function renderNow() {
-  const now = new Date();
-  const d = (now.getDay() + 6) % 7;
-  const card = $('#nowCard');
-  const cur = currentTerm(now);
-  if (cur.year !== state.view.year || cur.term !== state.view.term || d >= dayCount()) {
-    card.hidden = true;
-    return;
-  }
-  const ps = state.settings.periods;
-  const cp = currentPeriod(now);
-  const nowC = cp?.during ? courseAt(d, cp.p)[0] : null;
-  let next = null;
-  const startP = cp ? (cp.during ? cp.p + 1 : cp.p) : periodCount() + 1;
-  for (let p = startP; p <= periodCount(); p++) {
-    const c = courseAt(d, p)[0];
-    if (c) { next = { c, p }; break; }
-  }
-  if (!nowC && !next) {
-    card.hidden = false;
-    const hasToday = Array.from({ length: periodCount() }, (_, i) => courseAt(d, i + 1).length).some(Boolean);
-    card.innerHTML = `<p class="now-empty">${hasToday ? '今日の授業はもうありません。おつかれさまでした 🌋' : viewCourses().some((c) => !isCand(c)) ? '今日は授業がありません 🌋' : '下の表の「＋」から授業を追加するか、🔎 シラバス検索で授業を探しましょう。'}</p>`;
-    return;
-  }
-  const block = (label, c, p, extra) => `
-    <button class="now-item c${THEME}" data-id="${c.id}">
-      <span class="now-label">${label} ・ ${p}限 ${ps[p - 1][0]}〜${ps[p - 1][1]}${extra ? ` ・ ${extra}` : ''}</span>
-      <span class="now-name">${esc(c.name)}<small class="now-room"> ・ ${esc(roomOf(c, d, p) || '教室未設定')}</small></span>
-    </button>`;
-  let h = '';
-  if (nowC) h += block('いま', nowC, cp.p, `残り${cp.left}分`);
-  if (next) {
-    const until = toMin(ps[next.p - 1][0]) - (now.getHours() * 60 + now.getMinutes());
-    h += block('つぎ', next.c, next.p, until > 0 ? `あと${until >= 60 ? `${Math.floor(until / 60)}時間` : ''}${until % 60}分` : '');
-  }
-  card.hidden = false;
-  card.innerHTML = h;
 }
 
 // ---- 授業の詳しい画面 ----
@@ -1254,7 +1214,7 @@ function handleIncoming() {
 render();
 handleIncoming();
 maybeWelcome();
-setInterval(() => { if (!document.hidden) { renderNow(); renderGrid(); } }, 30000);
+setInterval(() => { if (!document.hidden) renderGrid(); }, 30000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
