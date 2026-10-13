@@ -335,11 +335,11 @@ label.check input { width: 1.3rem; height: 1.3rem; }
 .sp-b.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 
 .period-editor { display: grid; gap: 6px; }
-/* 「1限」と「始まり〜終わり」。狭いときは「始まり〜終わり」をまとめて次の行へ */
-.period-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
-.period-row b { flex: none; min-width: 2.5em; }
-.period-row .pair { flex: 1 1 16em; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
-.period-row .pair input { flex: 1 1 7em; min-width: 0; padding-left: .4em; padding-right: .3em; }
+/* 1限＝1段：「1限」｜始まり 〜 終わり（文字が大きくても折り返さない） */
+.period-row { display: grid; grid-template-columns: 2.6em minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 6px; padding: 4px 8px; background: var(--surface-2); border-radius: 12px; }
+.period-row b { font-size: .9375em; }
+.period-row .pair { display: contents; color: var(--muted); }
+.period-row .pair input { min-width: 0; width: 100%; text-align: center; font-variant-numeric: tabular-nums; padding: .45em .1em; background: var(--surface); }
 
 .toast {
   position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px);
