@@ -235,7 +235,7 @@ async function renderIntensiveOffers() {
   const q = intQuery.trim().toLowerCase();
   // 曜日か時限に「集中・不定など」がある授業
   const rows = sortOffers(data, data.rows.filter((r) => (r[5].includes('x') || r[6].includes('x'))
-    && (!intSem || [intSem, '通年'].includes(offerTerm(data, r))) && offerMatches(r, q)));
+    && (!intSem || [intSem, '通年'].includes(offerTerm(data, r))) && offerMatches(data, r, q)));
   box.innerHTML = offerListHtml(data, rows, {
     note: `${year}年度${intSem ? intSem : ''}`,
     showSem: () => true,
@@ -538,10 +538,18 @@ const gradeOptionsHtml = (selected, allLabel = 'すべて') => `<option value=""
 // 学科・プログラムの選択肢（選んだ学部のもの）。無い学部では、欄ごと隠す
 // 「先進工学科（情報・生体工学ＰＧ）」→「情報・生体工学ＰＧ」のように、かっこの中がプログラム・コース・分野なら、そこだけ（欄が狭いため）
 const progShort = (n) => (n.match(/^[^（]+（(.+(?:ＰＧ|プログラム|コース|分野))）$/)?.[1] || n).replace(/ＰＧ/g, 'PG');
+// 学部にプログラム（「先進工学科（機械工学ＰＧ）」など）があるとき、かっこのない「機械工学科」は以前の学科（「農学科」のように、その学科のプログラムがあるものは除く）
+const isOldDept = (p, list) => /学科$/.test(p[1]) && !p[1].includes('（')
+  && list.some((x) => /（.+(?:ＰＧ|プログラム)）$/.test(x[1])) && !list.some((x) => x[1].startsWith(`${p[1]}（`));
 const deptProgs = (data, dept) => (data?.progs || []).filter((p) => p[2] === dept);
 function fillProgSelect(sel, data, dept, selected) {
   const list = deptProgs(data, dept);
-  sel.innerHTML = `<option value="">指定しない</option>${list.map(([c, n]) => `<option value="${esc(c)}"${selected === c ? ' selected' : ''}>${esc(progShort(n))}</option>`).join('')}`;
+  const opt = ([c, n]) => `<option value="${esc(c)}"${selected === c ? ' selected' : ''}>${esc(progShort(n))}</option>`;
+  const old = list.filter((p) => isOldDept(p, list));
+  const now = list.filter((p) => !old.includes(p));
+  sel.innerHTML = `<option value="">指定しない</option>${old.length
+    ? `<optgroup label="学科・プログラム">${now.map(opt).join('')}</optgroup><optgroup label="以前の学科（今の学科・プログラムになる前に入学した人）">${old.map(opt).join('')}</optgroup>`
+    : list.map(opt).join('')}`;
   sel.closest('label').hidden = !list.length;
 }
 function fillOfferFilters(scope, data) {
@@ -604,15 +612,16 @@ function offerFiltersHtml(queryValue, extra = '') {
     <label class="grow">さがす<input class="offer-query" type="search" placeholder="科目名・先生の名前" value="${esc(queryValue)}"></label>
   </div>`;
 }
-// 学部・学年・さがす の条件に合うか
-function offerMatches(r, q) {
+// 学部・学年・さがす の条件に合うか。自分の学科・プログラムの授業は、学年が違っても出す（再履修・先取りもあるため）
+function offerMatches(data, r, q) {
   const dept = state.settings.dept || '';
   const grade = String(state.settings.grade || '');
+  const mine = myProgIndex(data);
   return (dept === '*' || r[3] === KYOTSU || r[3] === KYOSHOKU || r[3] === dept)
-    && (!grade || !r[7] || r[7].includes(grade))
+    && (!grade || !r[7] || r[7].includes(grade) || (mine >= 0 && r[10]?.includes(mine)))
     && (!q || `${r[1]} ${r[2]}`.toLowerCase().includes(q));
 }
-// 自分の学科・プログラム → 学部（ほかの学科・プログラムだけの授業を除く）と共通教育 → 学部のほかの学科・プログラム → そのほか、の順
+// 自分の学科・プログラム（自分の学年 → ほかの学年）→ 学部（ほかの学科・プログラムだけの授業を除く）と共通教育 → 学部のほかの学科・プログラム → そのほか、の順
 const myProgIndex = (data) => {
   const { dept, prog } = state.settings;
   return prog ? (data.progs || []).findIndex((p) => p[0] === prog && p[2] === dept) : -1;
@@ -622,12 +631,14 @@ const isCommonProg = (p) => /共通/.test(p[1]);
 function sortOffers(data, rows) {
   const dept = state.settings.dept || '';
   const mine = myProgIndex(data);
+  const grade = String(state.settings.grade || '');
   const rank = (r) => {
-    if (mine >= 0 && r[10]?.includes(mine)) return 0;
-    if (r[3] === KYOTSU) return 1;
-    if (r[3] !== dept) return 3;
-    if (mine < 0 || !r[10]?.length || r[10].some((i) => isCommonProg(data.progs[i]))) return 1;
-    return 2;
+    // 自分の学科・プログラム：自分の学年 → ほかの学年
+    if (mine >= 0 && r[10]?.includes(mine)) return !grade || !r[7] || r[7].includes(grade) ? 0 : 1;
+    if (r[3] === KYOTSU) return 2;
+    if (r[3] !== dept) return 4;
+    if (mine < 0 || !r[10]?.length || r[10].some((i) => isCommonProg(data.progs[i]))) return 2;
+    return 3;
   };
   return rows.sort((a, b) => rank(a) - rank(b) || a[1].localeCompare(b[1], 'ja'));
 }
@@ -685,7 +696,7 @@ async function renderOffers() {
   const q = offerQuery.trim().toLowerCase();
   const rows = sortOffers(data, data.rows.filter((r) => r[5].includes(String(d)) && r[6].includes(String(p))
     && slotsOfOffer(r, d, p).slots.some((x) => x.d === d && x.p === p)
-    && [term, '通年'].includes(offerTerm(data, r)) && offerMatches(r, q)));
+    && [term, '通年'].includes(offerTerm(data, r)) && offerMatches(data, r, q)));
   const dept = state.settings.dept || '';
   box.innerHTML = offerListHtml(data, rows, {
     note: `${year}年度${term}${dept ? '' : '・学部を選ぶと専門の授業も出ます'}`,
