@@ -232,7 +232,7 @@ async function renderIntensiveOffers() {
   $('#intFilters').hidden = !data;
   if (!data) { box.innerHTML = noDataHtml(year, '「✎ 一覧にない集中講義を自分で入力」'); return; }
   fillOfferFilters($('#intFilters'), data);
-  const q = intQuery.trim().toLowerCase();
+  const q = normSearch(intQuery);
   // 曜日か時限に「集中・不定など」がある授業
   const rows = sortOffers(data, data.rows.filter((r) => isLoose(r)
     && (!intSem || [intSem, '通年'].includes(offerTerm(data, r))) && offerMatches(data, r, q)));
@@ -612,6 +612,8 @@ function offerFiltersHtml(queryValue, extra = '') {
     <label class="grow">さがす<input class="offer-query" type="search" placeholder="科目名・先生の名前" value="${esc(queryValue)}"></label>
   </div>`;
 }
+// 「さがす」：「・」や空白、全角・半角、大文字・小文字、Ⅰ・I の違いは気にしない（「数理データサイエンス」で「数理・データサイエンス基礎」が出る）
+const normSearch = (s) => toHalf(String(s || '')).normalize('NFKC').toLowerCase().replace(/[\s・･,，、.．:：;；\-－()（）［］\[\]「」]/g, '');
 // 学部・学年・さがす の条件に合うか。自分の学科・プログラムの授業は、学年が違っても出す（再履修・先取りもあるため）
 function offerMatches(data, r, q) {
   const dept = state.settings.dept || '';
@@ -619,7 +621,7 @@ function offerMatches(data, r, q) {
   const mine = myProgIndex(data);
   return (dept === '*' || r[3] === KYOTSU || r[3] === KYOSHOKU || r[3] === dept)
     && (!grade || !r[7] || r[7].includes(grade) || (mine >= 0 && r[10]?.includes(mine)))
-    && (!q || `${r[1]} ${r[2]}`.toLowerCase().includes(q));
+    && (!q || normSearch(`${r[1]}${r[2]}`).includes(q));
 }
 // 自分の学科・プログラム（自分の学年 → ほかの学年）→ 学部（ほかの学科・プログラムだけの授業を除く）と共通教育 → 学部のほかの学科・プログラム → そのほか、の順
 const myProgIndex = (data) => {
@@ -693,7 +695,7 @@ async function renderOffers() {
   $('#slotSheet .offer-filters').hidden = !data;
   if (!data) { box.innerHTML = noDataHtml(year, '「✎ 一覧にない授業を自分で入力」'); return; }
   fillOfferFilters($('#slotSheet'), data);
-  const q = offerQuery.trim().toLowerCase();
+  const q = normSearch(offerQuery);
   const rows = sortOffers(data, data.rows.filter((r) => r[5].includes(String(d)) && r[6].includes(String(p))
     && slotsOfOffer(r, d, p).slots.some((x) => x.d === d && x.p === p)
     && [term, '通年'].includes(offerTerm(data, r)) && offerMatches(data, r, q)));
