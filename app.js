@@ -234,7 +234,7 @@ async function renderIntensiveOffers() {
   fillOfferFilters($('#intFilters'), data);
   const q = intQuery.trim().toLowerCase();
   // 曜日か時限に「集中・不定など」がある授業
-  const rows = sortOffers(data, data.rows.filter((r) => (r[5].includes('x') || r[6].includes('x'))
+  const rows = sortOffers(data, data.rows.filter((r) => isLoose(r)
     && (!intSem || [intSem, '通年'].includes(offerTerm(data, r))) && offerMatches(data, r, q)));
   box.innerHTML = offerListHtml(data, rows, {
     note: `${year}年度${intSem ? intSem : ''}`,
@@ -662,7 +662,7 @@ function offerListHtml(data, rows, { note, showSem, slotsText = true, empty, lim
     <ul class="slot-list">${shown.map((r) => {
       const sem = data.sems[r[4]];
       const when = slotsText && (r[5].length > 1 || r[6].length > 1)
-        ? `${[...r[5]].map((x) => DAYS[x] || 'ほか').join('')} ${[...r[6]].filter((x) => x !== 'x').join('・')}${r[6].replace('x', '') ? '限' : ''}${r[6].includes('x') && r[6] !== 'x' ? 'ほか' : ''}` : '';
+        ? `${[...r[5]].map((x) => DAYS[x] || 'ほか').join('')} ${[...r[6]].filter((x) => /\d/.test(x)).join('・')}${/\d/.test(r[6]) ? '限' : ''}${/\D/.test(r[6]) && /\d/.test(r[6]) ? 'ほか' : ''}` : '';
       return `<li class="offer-item">
         <div class="offer-main">
           <b>${esc(r[1])}</b>${mineProg >= 0 && r[10]?.includes(mineProg) ? '<span class="prog-tag">あなたの学科</span>' : ''}
@@ -678,7 +678,7 @@ function offerListHtml(data, rows, { note, showSem, slotsText = true, empty, lim
 }
 // 「安達、山口、酒匂、…」のように大勢いる授業は、先頭の3名と「ほかN名」にする
 const shortTeachers = (t) => {
-  const names = String(t || '').split(/[、,]\s*/).filter(Boolean);
+  const names = String(t || '').split(/[、,，;；]\s*/).filter(Boolean);
   return names.length > 3 ? `${names.slice(0, 3).join('、')} ほか${names.length - 3}名` : t;
 };
 const noDataHtml = (year, how) => `<p class="hint">${year}年度の授業の一覧はまだありません。${how}か、🔎 シラバス検索から追加してください。</p>`;
@@ -698,21 +698,35 @@ async function renderOffers() {
     && slotsOfOffer(r, d, p).slots.some((x) => x.d === d && x.p === p)
     && [term, '通年'].includes(offerTerm(data, r)) && offerMatches(data, r, q)));
   const dept = state.settings.dept || '';
+  // 曜日・時限が「その他・不定」の授業（学部・学科・学年で絞ったもの）。このコマに入れられる
+  const unfixed = dept || q ? sortOffers(data, data.rows.filter((r) => isUnfixed(r)
+    && [term, '通年'].includes(offerTerm(data, r)) && offerMatches(data, r, q))) : [];
   box.innerHTML = offerListHtml(data, rows, {
     note: `${year}年度${term}${dept ? '' : '・学部を選ぶと専門の授業も出ます'}`,
     showSem: (sem) => sem !== term,
     slot: { d, p },
     empty: `${q ? '「さがす」に当てはまる授業はありません。' : `${year}年度${term}のこのコマの授業は見つかりませんでした。`}${dept && dept !== '*' ? '学部を「すべての学部」にすると、ほかの学部の授業も出ます。' : ''}`,
-  });
+  }) + (unfixed.length ? `<h3 class="offer-sub">曜日・時限が決まっていない授業</h3>
+    ${offerListHtml(data, unfixed, {
+      note: 'シラバスで曜日・時限が「その他」「不定」の授業。このコマに入れられます',
+      showSem: (sem) => sem !== term,
+      slotsText: false,
+      slot: { d, p },
+      limit: 30,
+    })}` : '');
 }
 
+// 曜日・時限に、集中（c）や「その他・不定」（x）がある授業
+const isLoose = (r) => /\D/.test(r[5] + r[6]);
+// 曜日・時限が「その他・不定」で、集中講義ではない授業（どのコマにも入れられるように、コマの一覧の下に出す）
+const isUnfixed = (r) => /x/.test(r[5] + r[6]) && !/c/.test(r[5] + r[6]);
 // 一覧の授業が入るコマ。
 // 曜日か時限のどちらかが1つなら全部のコマ。「月 木」「4限 5限」のように同じ数（2〜3つ）なら、書かれた順に組み合わせる（月4・木5）。
 // それ以外（体育の4×4など）や「集中・不定」があるときは組み合わせが分からないので、押したコマだけ
 function slotsOfOffer(r, d, p) {
   const ds = [...r[5]];
   const ps = [...r[6]];
-  const plain = !ds.includes('x') && !ps.includes('x');
+  const plain = !isLoose(r);
   if (plain && (ds.length === 1 || ps.length === 1)) return { slots: ds.flatMap((x) => ps.map((y) => ({ d: Number(x), p: Number(y) }))), clear: true };
   if (plain && ds.length === ps.length && ds.length <= 3) return { slots: ds.map((x, i) => ({ d: Number(x), p: Number(ps[i]) })), clear: true };
   return { slots: [{ d, p }], clear: false };

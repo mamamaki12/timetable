@@ -112,10 +112,10 @@ async function fillDetails(ids, details) {
   saveDetails(details);
 }
 
-// 「月 火」→ "01"、集中・不定などは "x"
-const encodeDays = (s) => [...new Set(String(s || '').split(/\s+/).filter(Boolean).map((d) => (d in DAY_INDEX ? String(DAY_INDEX[d]) : 'x')))].join('');
-// 「１限 ２限」→ "12"、集中・不定などは "x"
-const encodeTimes = (s) => [...new Set(String(s || '').split(/\s+/).filter(Boolean).map((t) => toHalf(t).match(/^(\d)限/)?.[1] || 'x'))].join('');
+// 「月 火」→ "01"、集中は "c"、その他・不定などは "x"
+const encodeDays = (s) => [...new Set(String(s || '').split(/\s+/).filter(Boolean).map((d) => (d in DAY_INDEX ? String(DAY_INDEX[d]) : d === '集中' ? 'c' : 'x')))].join('');
+// 「１限 ２限」→ "12"、集中は "c"、不定などは "x"
+const encodeTimes = (s) => [...new Set(String(s || '').split(/\s+/).filter(Boolean).map((t) => toHalf(t).match(/^(\d)限/)?.[1] || (t === '集中' ? 'c' : 'x')))].join('');
 // 「１年 ２年」→ "12"
 const encodeYears = (s) => [...new Set(toHalf(s).match(/\d(?=年)/g) || [])].join('');
 const cleanTeacher = (s) => String(s || '').replace(/[（(]代表者?[）)]/g, '').replace(/\s+/g, ' ').trim();
