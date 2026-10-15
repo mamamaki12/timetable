@@ -329,7 +329,7 @@ function roomsHtml(c) {
   const slots = c.term === '集中' ? [] : c.slots || [];
   if (!slots.length) return c.room ? `<dt>教室</dt><dd>${esc(c.room)}</dd>` : '';
   const one = slots.length === 1;
-  return `<dt>教室</dt><dd class="room-list">${slots.map((sl) => {
+  return `<dt class="mid">教室</dt><dd class="room-list">${slots.map((sl) => {
     const r = roomOf(c, sl.d, sl.p);
     return `<button class="room-btn${r ? '' : ' empty'}" data-room-edit="${c.id}:${sl.d}-${sl.p}">${one ? '' : `<small>${DAYS[sl.d]}${sl.p}限</small> `}${esc(r) || '教室を入れる'}</button>`;
   }).join('')}</dd>`;
@@ -354,7 +354,7 @@ function openDetail(id) {
       <button type="button" class="icon-btn" data-close aria-label="閉じる">✕</button>
     </div>
     <dl class="facts">
-      <dt>いつ</dt><dd>${esc(c.year)}年度 ${esc(c.term)}<br>${esc(when)}</dd>
+      <dt>いつ</dt><dd>${esc(c.term)} ${esc(when)}</dd>
       ${roomsHtml(c)}
       ${c.teacher ? `<dt>担当</dt><dd>${esc(c.teacher)}</dd>` : ''}
       ${c.code ? `<dt>時間割コード</dt><dd><button class="link-like" data-copy="${esc(c.code)}">${esc(c.code)} <small>コピー</small></button></dd>` : ''}
