@@ -645,7 +645,7 @@ function sortOffers(data, rows) {
   return rows.sort((a, b) => rank(a) - rank(b) || a[1].localeCompare(b[1], 'ja'));
 }
 const deptLabel = (data, code) => (code === KYOTSU ? '共通教育' : data.depts[code] || '');
-function offerListHtml(data, rows, { note, showSem, slotsText = true, empty, limit = 80, more = false, slot = null }) {
+function offerListHtml(data, rows, { note, showSem, slotsText = true, empty, limit = 80, more = false, slot = null, here = false }) {
   const mineBySid = new Map(state.courses.filter((c) => c.year === data.year && c.sid).map((c) => [c.sid, c]));
   // 追加済みの授業：このコマに入っていなければ、「このコマにも入れる」（週に2回ある授業の2回目）
   const addedHtml = (sid) => {
@@ -672,7 +672,7 @@ function offerListHtml(data, rows, { note, showSem, slotsText = true, empty, lim
         </div>
         <div class="slot-acts">
           <a class="btn" href="${esc(data.detail + r[0])}">📖 シラバス</a>
-          ${mineBySid.has(String(r[0])) ? addedHtml(String(r[0])) : `<button class="btn primary" data-offer="${r[0]}">＋ 追加</button>`}
+          ${mineBySid.has(String(r[0])) ? addedHtml(String(r[0])) : `<button class="btn primary" data-offer="${r[0]}"${here ? ' data-here' : ''}>${here ? '＋ このコマに追加' : '＋ 追加'}</button>`}
         </div>
       </li>`;
     }).join('')}</ul>
@@ -703,11 +703,15 @@ async function renderOffers() {
   // 曜日・時限が「その他・不定」の授業（学部・学科・学年で絞ったもの）。このコマに入れられる
   const unfixed = dept || q ? sortOffers(data, data.rows.filter((r) => isUnfixed(r)
     && [term, '通年'].includes(offerTerm(data, r)) && offerMatches(data, r, q))) : [];
+  // 「さがす」に入れたときだけ：ほかの曜日・時限の授業も出す（シラバスと実際の時間が違うとき、このコマに入れるため）
+  const shownIds = new Set([...rows, ...unfixed].map((r) => r[0]));
+  const others = q ? sortOffers(data, data.rows.filter((r) => !shownIds.has(r[0]) && !/c/.test(r[5] + r[6])
+    && [term, '通年'].includes(offerTerm(data, r)) && offerMatches(data, r, q))) : [];
   box.innerHTML = offerListHtml(data, rows, {
     note: `${year}年度${term}${dept ? '' : '・学部を選ぶと専門の授業も出ます'}`,
     showSem: (sem) => sem !== term,
     slot: { d, p },
-    empty: `${q ? '「さがす」に当てはまる授業はありません。' : `${year}年度${term}のこのコマの授業は見つかりませんでした。`}${dept && dept !== '*' ? '学部を「すべての学部」にすると、ほかの学部の授業も出ます。' : ''}`,
+    empty: `${q ? 'このコマには、「さがす」に当てはまる授業はありません。' : `${year}年度${term}のこのコマの授業は見つかりませんでした。`}${dept && dept !== '*' && !others.length ? '学部を「すべての学部」にすると、ほかの学部の授業も出ます。' : ''}`,
   }) + (unfixed.length ? `<h3 class="offer-sub">曜日・時限が決まっていない授業</h3>
     ${offerListHtml(data, unfixed, {
       note: 'シラバスで曜日・時限が「その他」「不定」の授業。このコマに入れられます',
@@ -715,6 +719,13 @@ async function renderOffers() {
       slotsText: false,
       slot: { d, p },
       limit: 30,
+    })}` : '') + (others.length ? `<h3 class="offer-sub">ほかの曜日・時限の授業</h3>
+    ${offerListHtml(data, others, {
+      note: 'シラバスと実際の時間が違う授業は、ここから、このコマに入れられます',
+      showSem: (sem) => sem !== term,
+      slot: { d, p },
+      limit: 20,
+      here: true,
     })}` : '');
 }
 
@@ -737,7 +748,8 @@ function slotsOfOffer(r, d, p) {
 // 一覧の授業を時間割に入れる。
 // 時間割のコマから：そのコマにもう履修する授業があれば候補として入れる。
 // 集中のページから：曜日・時限なしの集中講義として入れる。
-async function addOffer(id, intensive = false) {
+// here：シラバスの曜日・時限ではなく、押したコマに入れる（シラバスと実際の時間が違う授業）
+async function addOffer(id, intensive = false, here = false) {
   const { year } = state.view;
   const data = await loadOffers(year);
   const r = data?.rows.find((x) => x[0] === Number(id));
@@ -755,7 +767,7 @@ async function addOffer(id, intensive = false) {
     return;
   }
   const [d, p] = slotKey.split('-').map(Number);
-  const { slots, clear } = slotsOfOffer(r, d, p);
+  const { slots, clear } = here ? { slots: [{ d, p }], clear: true } : slotsOfOffer(r, d, p);
   const busy = slots.some((s) => courseAt(s.d, s.p).length);
   state.courses.push({ ...base, term: offerTerm(data, r) || state.view.term, slots, status: busy ? 'cand' : 'take' });
   save(); render(); $('#slotSheet').close();
@@ -875,7 +887,7 @@ $('#slotSheet').addEventListener('click', async (e) => {
   } else if (t.dataset.addslot) {
     addSlotTo(t.dataset.addslot, slotKey);
   } else if (t.dataset.offer) {
-    addOffer(t.dataset.offer);
+    addOffer(t.dataset.offer, false, t.hasAttribute('data-here'));
   } else if (t.dataset.addCand) {
     const [d, p] = t.dataset.addCand.split('-').map(Number);
     $('#slotSheet').close();
