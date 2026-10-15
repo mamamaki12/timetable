@@ -395,6 +395,8 @@ function openDetail(id) {
     ${c.memo ? `<section><h3>メモ</h3><p class="memo">${esc(c.memo)}</p></section>` : ''}
 
     <div class="actions">
+      <button class="btn danger" id="detailDelete">削除</button>
+      <span class="spacer"></span>
       <button class="btn" id="editCourse">編集</button>
     </div>`;
   const dlg = $('#detail');
@@ -432,6 +434,10 @@ $('#detail').addEventListener('click', async (e) => {
   } else if (t.dataset.slotList) {
     $('#detail').close();
     openSlot(t.dataset.slotList);
+  } else if (t.id === 'detailDelete') {
+    // 確認はせず、すぐ消して「元に戻す」を出す（ほかの削除と同じ）
+    $('#detail').close();
+    withUndo(`「${c.name}」を消しました`, () => { state.courses = state.courses.filter((x) => x.id !== c.id); });
   } else if (t.id === 'editCourse') {
     $('#detail').close();
     openEditor(c);
