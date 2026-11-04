@@ -1,6 +1,6 @@
 // 一度開いたら、電波のない教室でも時間割を見られるようにする（ネットワーク優先・つながらなければキャッシュ）
-const CACHE = 'kadai-jikanwari-v35';
-const FILES = ['./', 'index.html', 'style.css', 'app.js', 'parse.js', 'manifest.webmanifest', 'icon.svg'];
+const CACHE = 'kadai-jikanwari-v36';
+const FILES = ['./', 'index.html', 'style.css', 'app.js', 'parse.js', 'sanitize.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
