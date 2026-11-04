@@ -7,7 +7,9 @@ self.addEventListener('install', (e) => {
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
-    for (const k of await caches.keys()) if (k !== CACHE) await caches.delete(k);
+    // mamamaki12.github.io はほかのアプリ（てもとフォトなど）と保存場所を分け合っているので、
+    // 消すのはこのアプリの古い保存（kadai-jikanwari-…）だけにする
+    for (const k of await caches.keys()) if (k.startsWith('kadai-jikanwari-') && k !== CACHE) await caches.delete(k);
     await self.clients.claim();
   })());
 });
