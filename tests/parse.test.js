@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSlots, parseTerm, pairsFromText, extractCourse, decodeImport, toHalf, courseFromKadai, slotsFromDayTime } from '../parse.js';
+import { parseSlots, parseTerm, pairsFromText, extractCourse, decodeImport, toHalf, courseFromKadai, slotsFromDayTime, kadaiUrl, sidFromUrl } from '../parse.js';
 
 test('曜日・時限のいろいろな書き方', () => {
   assert.deepEqual(parseSlots('月1'), [{ d: 0, p: 1 }]);
@@ -168,4 +168,30 @@ test('シラバスの表「月 木」「４限 ５限」を貼り付けたとき
   const c = extractCourse(pairsFromText(text), { text });
   assert.deepEqual(c.slots, [{ d: 0, p: 4 }, { d: 3, p: 5 }]);
   assert.equal(c.slotNote, undefined);
+});
+
+test('シラバスのURLとして受け取るのは鹿大のサイトだけ（細工したリンク対策）', () => {
+  assert.equal(kadaiUrl('https://syllabus11.kuas.kagoshima-u.ac.jp/showDetail/ja/12345'), 'https://syllabus11.kuas.kagoshima-u.ac.jp/showDetail/ja/12345');
+  assert.equal(kadaiUrl('https://www.kagoshima-u.ac.jp/'), 'https://www.kagoshima-u.ac.jp/');
+  for (const bad of ['https://evil.example/kagoshima-u.ac.jp', 'https://kagoshima-u.ac.jp.evil.example/', 'https://evilkagoshima-u.ac.jp/',
+    'https://kagoshima-u.ac.jp@evil.example/', 'javascript:alert(1)', 'data:text/html,x', 'ftp://syllabus11.kuas.kagoshima-u.ac.jp/', '']) {
+    assert.equal(kadaiUrl(bad), '', bad);
+  }
+  // ブックマークレット・共有で、ほかのサイトのURLが来たら入れない（入れなかったことは分かるようにする）
+  const evil = { u: 'https://evil.example/login', p: [['授業科目名', '統計学'], ['曜日・時限', '金1']] };
+  const c = decodeImport('#add=' + encodeURIComponent(JSON.stringify(evil)));
+  assert.equal(c.name, '統計学');
+  assert.equal(c.syllabus, undefined);
+  assert.equal(c.otherSite, true);
+  const k = courseFromKadai({ id: 1, n: '化学' }, 'https://evil.example/');
+  assert.equal(k.syllabus, undefined);
+  assert.equal(k.otherSite, true);
+  assert.equal(extractCourse([], { title: '鹿児島大学シラバス - 微分積分学', url: 'https://syllabus11.kuas.kagoshima-u.ac.jp/x' }).otherSite, undefined);
+});
+
+test('シラバスのページのURLから番号を取り出す（共有で来たとき、一覧から授業を探すため）', () => {
+  assert.equal(sidFromUrl('https://syllabus11.kuas.kagoshima-u.ac.jp/showDetail/ja/34528'), '34528');
+  assert.equal(sidFromUrl('https://syllabus11.kuas.kagoshima-u.ac.jp/showDetail/en/34528?x=1'), '34528');
+  assert.equal(sidFromUrl('https://syllabus11.kuas.kagoshima-u.ac.jp/showSearch'), '');
+  assert.equal(sidFromUrl('https://evil.example/showDetail/ja/34528'), '');
 });

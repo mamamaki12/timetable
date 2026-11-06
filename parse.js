@@ -157,6 +157,29 @@ function nameFromTitle(title) {
   return t.length >= 2 && t.length <= 60 ? t : '';
 }
 
+// シラバスのURLとして受け取るのは、鹿児島大学のサイト（kagoshima-u.ac.jp）のページだけ。
+// 細工したリンクで、ほかのサイト（偽のログイン画面など）へのURLを入れられないようにする
+export function kadaiUrl(url) {
+  try {
+    const u = new URL(String(url || '').trim());
+    const host = u.hostname.toLowerCase();
+    return /^https?:$/.test(u.protocol) && (host === 'kagoshima-u.ac.jp' || host.endsWith('.kagoshima-u.ac.jp')) ? u.href : '';
+  } catch {
+    return '';
+  }
+}
+// 鹿大シラバス検索の授業のページ（…/showDetail/ja/12345）のURLから、シラバスの番号を取り出す
+export function sidFromUrl(url) {
+  return kadaiUrl(url).match(/\/showDetail\/[a-z]+\/(\d+)(?:[/?#]|$)/)?.[1] || '';
+}
+// 送られてきたURLが鹿大のページならシラバスのURLにし、ほかのサイトなら、そのことだけを覚えておく
+function setSyllabus(course, url) {
+  if (!url) return;
+  const ok = kadaiUrl(url);
+  if (ok) course.syllabus = ok;
+  else course.otherSite = true;
+}
+
 // 「見出し→値」の組（とページの題名・URL）から、科目の情報を作る
 export function extractCourse(pairs, { title = '', url = '', text = '' } = {}) {
   const found = {};
@@ -210,7 +233,7 @@ export function extractCourse(pairs, { title = '', url = '', text = '' } = {}) {
     const y = toHalf(found.year).match(/20\d\d/);
     if (y) course.year = Number(y[0]);
   }
-  if (/^https?:\/\//.test(url)) course.syllabus = url;
+  setSyllabus(course, url);
   return course;
 }
 
@@ -238,7 +261,7 @@ export function courseFromKadai(k, url = '') {
   }
   if (Number(k.y)) course.year = Number(k.y);
   if (k.id) course.sid = String(k.id);
-  if (/^https?:\/\//.test(url)) course.syllabus = url;
+  setSyllabus(course, url);
   return course;
 }
 

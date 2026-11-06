@@ -1,4 +1,5 @@
-import { DAYS, extractCourse, pairsFromText, decodeImport, parseTerm, toHalf } from './parse.js';
+import { DAYS, extractCourse, pairsFromText, decodeImport, parseTerm, toHalf, sidFromUrl } from './parse.js';
+import { sanitizeState, cleanSlots, uid } from './sanitize.js';
 
 const KEY = 'kadai-jikanwari-v1';
 const SYLLABUS_SEARCH = 'https://syllabus11.kuas.kagoshima-u.ac.jp/showSearch';
@@ -19,7 +20,6 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const safeUrl = (u) => (/^https?:\/\//i.test(String(u || '').trim()) ? String(u).trim() : '');
-const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
 // 4〜9月は前期、10〜3月は後期。1〜3月は前の年度
 function currentTerm(now = new Date()) {
@@ -27,19 +27,12 @@ function currentTerm(now = new Date()) {
   return { year: m < 4 ? now.getFullYear() - 1 : now.getFullYear(), term: m >= 4 && m <= 9 ? '前期' : '後期' };
 }
 
+// 保存してあるデータを、決まった形にそろえて読む（なくした設定やmanabaのURLなど、今は使わない項目は捨てる）
+const clean = (raw) => sanitizeState(raw, { cur: currentTerm(), periods: DEFAULT_PERIODS });
 function load() {
   let s;
   try { s = JSON.parse(localStorage.getItem(KEY)); } catch { s = null; }
-  const cur = currentTerm();
-  s = s && typeof s === 'object' ? s : {};
-  s.settings = { periods: DEFAULT_PERIODS.map((p) => [...p]), ...(s.settings || {}) };
-  for (const k of ['showSat', 'showP6', 'color', 'backupSnooze']) delete s.settings[k]; // なくした設定
-  delete s.settings.manaba; // 以前のmanabaのURL（機能をなくしたので捨てる）
-  for (const c of s.courses || []) delete c.manaba;
-  if (!Array.isArray(s.settings.periods) || s.settings.periods.length < 6) s.settings.periods = DEFAULT_PERIODS.map((p) => [...p]);
-  s.courses = Array.isArray(s.courses) ? s.courses : [];
-  s.view = { ...cur, ...(s.view || {}) };
-  return s;
+  return clean(s);
 }
 
 let state = load();
@@ -108,7 +101,7 @@ const overlapping = (c, slots = c.slots || []) => viewCourses().filter((x) => x.
 
 function render() {
   const { year, term } = state.view;
-  $('#yearLabel').innerHTML = `${year}<small>年度</small>`;
+  $('#yearLabel').innerHTML = `${esc(year)}<small>年度</small>`;
   $('#pageTitle').textContent = `${year}年度 ${term}の時間割`;
   const tb = $('#termCycle'), terms = ['前期', '後期', '集中'], ti = terms.indexOf(term);
   tb.dataset.term = term;
@@ -143,7 +136,7 @@ function renderGrid() {
   for (let p = 1; p <= periods; p++) {
     // 左の列は、時限の数字と、開始時刻だけ（時を上、分を下に並べて、列を細くする）。終わりの時刻は、読み上げと長押しで分かる
     const [sh, sm] = ps[p - 1][0].split(':');
-    h += `<tr><th class="ph" scope="row" title="${p}限 ${ps[p - 1][0]}〜${ps[p - 1][1]}"><b>${p}<span class="sr-only">限 ${ps[p - 1][0]}から${ps[p - 1][1]}まで</span></b><small aria-hidden="true"><span>${sh}</span><span>${sm}</span></small></th>`;
+    h += `<tr><th class="ph" scope="row" title="${p}限 ${esc(ps[p - 1][0])}〜${esc(ps[p - 1][1])}"><b>${p}<span class="sr-only">限 ${esc(ps[p - 1][0])}から${esc(ps[p - 1][1])}まで</span></b><small aria-hidden="true"><span>${esc(sh)}</span><span>${esc(sm)}</span></small></th>`;
     for (let d = 0; d < days; d++) {
       const cs = courseAt(d, p);
       const cands = candsAt(d, p);
@@ -160,9 +153,9 @@ function renderGrid() {
       } else {
         h += `<td class="${cls}"><div class="stack">`;
         for (const c of cs) {
-          h += `<button class="course c${THEME}${cs.length > 1 ? ' clash' : ''}" data-id="${c.id}">
+          h += `<button class="course c${THEME}${cs.length > 1 ? ' clash' : ''}" data-id="${esc(c.id)}">
             <span class="cname">${esc(c.name)}</span>
-            <span class="croom${roomOf(c, d, p) ? '' : ' empty'}" data-room-edit="${c.id}:${d}-${p}">${esc(roomOf(c, d, p)) || '教室'}</span>
+            <span class="croom${roomOf(c, d, p) ? '' : ' empty'}" data-room-edit="${esc(c.id)}:${d}-${p}">${esc(roomOf(c, d, p)) || '教室'}</span>
             ${absenceBadge(c) || openTaskCount(c) ? `<span class="meta">${openTaskCount(c) ? `<span class="dot" title="未提出の課題">課${openTaskCount(c)}</span>` : ''}${absenceBadge(c)}</span>` : ''}
           </button>`;
         }
@@ -184,16 +177,27 @@ function absenceBadge(c) {
   if (!a) return '';
   const lim = absenceLimit(c);
   const lvl = a > lim ? 'over' : a >= lim ? 'edge' : a >= lim - 1 ? 'warn' : '';
-  return `<span class="abs ${lvl}">欠${a}</span>`;
+  return `<span class="abs ${lvl}">欠${esc(a)}</span>`;
 }
 
-const courseLine = (c, sub) => `<li><button class="course-line c${THEME}${isCand(c) ? ' cand' : ''}" data-id="${c.id}"><b>${isCand(c) ? '<span class="badge">候補</span>' : ''}${esc(c.name)}</b><small>${esc(sub.filter(Boolean).join(' ・ '))}</small></button></li>`;
+const courseLine = (c, sub) => `<li><button class="course-line c${THEME}${isCand(c) ? ' cand' : ''}" data-id="${esc(c.id)}"><b>${isCand(c) ? '<span class="badge">候補</span>' : ''}${esc(c.name)}</b><small>${esc(sub.filter(Boolean).join(' ・ '))}</small></button></li>`;
 
-// 前期・後期で、曜日・時限が入っていない授業（あるときだけ出す）
+// 時間割の表に出るコマ（月〜土・1〜6限）。大学院の7・8限は表に出ない
+const inGrid = (s) => s.d >= 0 && s.d <= 5 && s.p >= 1 && s.p <= 6;
+const slotText = (c) => (c.slots || []).map((s) => `${DAYS[s.d]}${s.p}限`).join('・');
+// 時限の時刻「12:50〜14:20」（設定に無い7・8限は、分かるところだけ）
+function periodTime(from, to = from) {
+  const a = state.settings.periods[from - 1];
+  const b = state.settings.periods[to - 1];
+  return a ? `${a[0]}〜${b ? b[1] : ''}` : '';
+}
+
+// 前期・後期で、表に入らない授業（曜日・時限が入っていない授業や、7限より後の授業。あるときだけ出す）
 function renderExtra() {
-  const list = viewCourses().filter((c) => !c.slots?.length);
+  const list = viewCourses().filter((c) => !c.slots?.some(inGrid));
   $('#extraPanel').hidden = !list.length;
-  $('#extraList').innerHTML = list.map((c) => courseLine(c, [c.term, c.teacher, c.room])).join('');
+  $('#extraPanel h2').textContent = list.some((c) => c.slots?.length) ? '時間割の表に入らない授業' : '曜日・時限が決まっていない授業';
+  $('#extraList').innerHTML = list.map((c) => courseLine(c, [c.term, slotText(c), c.teacher, c.room])).join('');
 }
 
 // 「2026-08-20」〜「2026-08-23」→「8/20(木)〜8/23(日)」とあと何日か
@@ -268,7 +272,7 @@ function renderTasks() {
   for (const c of viewCourses()) for (const t of c.tasks || []) if (!t.done) items.push({ c, t });
   items.sort((a, b) => (a.t.due || '9999').localeCompare(b.t.due || '9999'));
   $('#allTasks').innerHTML = items.length
-    ? items.map(({ c, t }) => `<li class="${dueClass(t.due)}"><label><input type="checkbox" data-task="${c.id}:${t.id}"> <span>${esc(t.title)}</span></label><small><button class="link-like" data-id="${c.id}">${esc(c.name)}</button>${t.due ? ` ・ <span class="due">${fmtDue(t.due)}</span>` : ''}</small></li>`).join('')
+    ? items.map(({ c, t }) => `<li class="${dueClass(t.due)}"><label><input type="checkbox" data-task="${esc(c.id)}:${esc(t.id)}"> <span>${esc(t.title)}</span></label><small><button class="link-like" data-id="${esc(c.id)}">${esc(c.name)}</button>${t.due ? ` ・ <span class="due">${esc(fmtDue(t.due))}</span>` : ''}</small></li>`).join('')
     : '<li class="empty-note">未提出の課題はありません。授業を開いて追加できます。</li>';
 }
 
@@ -303,7 +307,7 @@ function renderStats() {
   $('#stats').innerHTML = `
     <div><b>${cs.length}</b><small>授業</small></div>
     ${isIntensiveView() ? '' : `<div><b>${koma}</b><small>コマ / 週</small></div>`}
-    <div><b>${credits}</b><small>単位（${state.view.term}）</small></div>
+    <div><b>${credits}</b><small>単位（${esc(state.view.term)}）</small></div>
     <div><b>${yearCredits}</b><small>単位（年度）</small></div>
     ${Object.keys(byCat).length ? `<p class="cats">${Object.entries(byCat).map(([k, v]) => `${esc(k)} ${v}単位`).join(' ・ ')}</p>` : ''}
     ${nCand ? `<p class="cats">ほかに候補が${nCand}件あります（合計には入れていません）</p>` : ''}`;
@@ -331,7 +335,7 @@ function roomsHtml(c) {
   const one = slots.length === 1;
   return `<dt class="mid">教室</dt><dd class="room-list">${slots.map((sl) => {
     const r = roomOf(c, sl.d, sl.p);
-    return `<button class="room-btn${r ? '' : ' empty'}" data-room-edit="${c.id}:${sl.d}-${sl.p}">${one ? '' : `<small>${DAYS[sl.d]}${sl.p}限</small> `}${esc(r) || '教室を入れる'}</button>`;
+    return `<button class="room-btn${r ? '' : ' empty'}" data-room-edit="${esc(c.id)}:${sl.d}-${sl.p}">${one ? '' : `<small>${DAYS[sl.d]}${sl.p}限</small> `}${esc(r) || '教室を入れる'}</button>`;
   }).join('')}</dd>`;
 }
 
@@ -339,12 +343,11 @@ function openDetail(id) {
   const c = state.courses.find((x) => x.id === id);
   if (!c) return;
   detailId = id;
-  const ps = state.settings.periods;
   // 曜日ごとにまとめて「水3限 12:50〜14:20」「金3・4限 12:50〜16:00」のように出す
   const byDay = new Map();
   for (const s of c.slots || []) byDay.set(s.d, [...(byDay.get(s.d) || []), s.p].sort((a, b) => a - b));
   const when = c.term === '集中' ? `${c.sem && c.sem !== '集中' ? `${c.sem}・` : ''}${c.start ? fmtRange(c.start, c.end) : '日程未定'}`
-    : [...byDay].map(([d, pp]) => `${DAYS[d]}${pp.join('・')}限 ${ps[pp[0] - 1][0]}〜${ps[pp[pp.length - 1] - 1][1]}`).join(' / ') || '曜日・時限なし';
+    : [...byDay].map(([d, pp]) => `${DAYS[d]}${pp.join('・')}限 ${periodTime(pp[0], pp[pp.length - 1])}`.trim()).join(' / ') || '曜日・時限なし';
   const a = c.absences || 0;
   const lim = absenceLimit(c);
   const tasks = c.tasks || [];
@@ -372,7 +375,7 @@ function openDetail(id) {
       <h3>欠席</h3>
       <div class="counter">
         <button class="round" data-abs="-1" aria-label="欠席を1回減らす">−</button>
-        <b class="${a > lim ? 'over' : a >= lim ? 'edge' : ''}">${a}</b><span>/ ${c.sessions || 15}回</span>
+        <b class="${a > lim ? 'over' : a >= lim ? 'edge' : ''}">${esc(a)}</b><span>/ ${esc(c.sessions || 15)}回</span>
         <button class="round" data-abs="1" aria-label="欠席を1回増やす">＋</button>
       </div>
       <p class="hint">${a > lim ? '⚠ 3分の1を超えています。単位が出ないおそれがあるので、担当の先生やシラバスの出席の条件を確認してください。'
@@ -383,7 +386,7 @@ function openDetail(id) {
     <section>
       <h3>課題・提出物</h3>
       <ul class="task-list">
-        ${tasks.map((t) => `<li class="${t.done ? 'done' : dueClass(t.due)}"><label><input type="checkbox" data-task="${c.id}:${t.id}" ${t.done ? 'checked' : ''}> <span>${esc(t.title)}</span></label><small>${t.due ? fmtDue(t.due) : ''} <button class="link-like" data-deltask="${t.id}" aria-label="「${esc(t.title)}」を消す">消す</button></small></li>`).join('') || '<li class="empty-note">まだありません</li>'}
+        ${tasks.map((t) => `<li class="${t.done ? 'done' : dueClass(t.due)}"><label><input type="checkbox" data-task="${esc(c.id)}:${esc(t.id)}" ${t.done ? 'checked' : ''}> <span>${esc(t.title)}</span></label><small>${t.due ? esc(fmtDue(t.due)) : ''} <button class="link-like" data-deltask="${esc(t.id)}" aria-label="「${esc(t.title)}」を消す">消す</button></small></li>`).join('') || '<li class="empty-note">まだありません</li>'}
       </ul>
       <form class="task-add" id="taskAdd">
         <input name="title" placeholder="例：第3回レポート" required>
@@ -477,12 +480,11 @@ let decided = null; // 直前に決めた授業（ほかの候補を消すか聞
 function openSlot(key) {
   slotKey = key;
   const [d, p] = key.split('-').map(Number);
-  const ps = state.settings.periods;
   const list = allAt(d, p).sort((a, b) => isCand(a) - isCand(b));
   const others = decided ? overlapping(decided).filter(isCand) : [];
   $('#slotBody').innerHTML = `
     <div class="sheet-head">
-      <h2>${DAYS[d]}曜${p}限 <small class="muted">${ps[p - 1][0]}〜${ps[p - 1][1]}</small></h2>
+      <h2>${DAYS[d]}曜${p}限 ${periodTime(p) ? `<small class="muted">${esc(periodTime(p))}</small>` : ''}</h2>
       <button type="button" class="icon-btn" data-close aria-label="閉じる">✕</button>
     </div>
     ${decided && others.length ? `<div class="notice decided">
@@ -492,14 +494,14 @@ function openSlot(key) {
     ${list.length ? `<p class="hint">${list.filter(isCand).length ? '候補を比べて「これにする」で決めます。候補は単位の合計に入りません。' : '下の「このコマの授業」から候補を入れておけます。'}</p>` : ''}
     ${list.length ? `<ul class="slot-list">
       ${list.map((c) => `<li class="slot-item c${THEME}${isCand(c) ? ' cand' : ''}">
-        <button class="slot-main" data-open="${c.id}">
+        <button class="slot-main" data-open="${esc(c.id)}">
           <span class="badge${isCand(c) ? '' : ' take'}">${isCand(c) ? '候補' : '履修'}</span>
           <b>${esc(c.name)}</b>
           <small>${esc([c.teacher, c.room, c.credits ? `${c.credits}単位` : '', (c.slots || []).length > 1 ? c.slots.map((s) => `${DAYS[s.d]}${s.p}`).join('・') : ''].filter(Boolean).join(' ・ ')) || '　'}</small>
         </button>
         <div class="slot-acts">
-          ${safeUrl(c.syllabus) ? `<a class="btn" href="${esc(safeUrl(c.syllabus))}">📖 シラバス</a>` : `<button class="btn" data-find="${c.id}">🔎 シラバス</button>`}
-          ${isCand(c) ? `<button class="btn primary" data-decide="${c.id}">これにする</button>` : ''}
+          ${safeUrl(c.syllabus) ? `<a class="btn" href="${esc(safeUrl(c.syllabus))}">📖 シラバス</a>` : `<button class="btn" data-find="${esc(c.id)}">🔎 シラバス</button>`}
+          ${isCand(c) ? `<button class="btn primary" data-decide="${esc(c.id)}">これにする</button>` : ''}
         </div>
       </li>`).join('')}
     </ul>` : ''}
@@ -659,7 +661,7 @@ function offerListHtml(data, rows, { note, showSem, slotsText = true, empty, lim
     if (slot && c && c.term !== '集中' && (c.term === state.view.term || c.term === '通年')) {
       return c.slots?.some((x) => x.d === slot.d && x.p === slot.p)
         ? '<span class="added">このコマに入っています</span>'
-        : `<button class="btn primary" data-addslot="${c.id}">このコマにも入れる</button>`;
+        : `<button class="btn primary" data-addslot="${esc(c.id)}">このコマにも入れる</button>`;
     }
     return '<span class="added">追加済み</span>';
   };
@@ -678,7 +680,7 @@ function offerListHtml(data, rows, { note, showSem, slotsText = true, empty, lim
         </div>
         <div class="slot-acts">
           <a class="btn" href="${esc(data.detail + r[0])}">📖 シラバス</a>
-          ${mineBySid.has(String(r[0])) ? addedHtml(String(r[0])) : `<button class="btn primary" data-offer="${r[0]}"${here ? ' data-here' : ''}>${here ? '＋ このコマに追加' : '＋ 追加'}</button>`}
+          ${mineBySid.has(String(r[0])) ? addedHtml(String(r[0])) : `<button class="btn primary" data-offer="${esc(r[0])}"${here ? ' data-here' : ''}>${here ? '＋ このコマに追加' : '＋ 追加'}</button>`}
         </div>
       </li>`;
     }).join('')}</ul>
@@ -775,7 +777,7 @@ async function addOffer(id, intensive = false, here = false) {
   const [d, p] = slotKey.split('-').map(Number);
   const { slots, clear } = here ? { slots: [{ d, p }], clear: true } : slotsOfOffer(r, d, p);
   const busy = slots.some((s) => courseAt(s.d, s.p).length);
-  state.courses.push({ ...base, term: offerTerm(data, r) || state.view.term, slots, status: busy ? 'cand' : 'take' });
+  state.courses.push({ ...base, term: offerTerm(data, r) || state.view.term, slots: cleanSlots(slots), status: busy ? 'cand' : 'take' });
   save(); render(); $('#slotSheet').close();
   toast(`「${r[1]}」を${busy ? '候補に' : '時間割に'}入れました${clear ? '' : `（${DAYS[d]}${p}限だけ。ほかのコマは授業の画面の「編集」で）`}`);
 }
@@ -791,7 +793,7 @@ function sameCourseHtml(d, p) {
         <b>${esc(c.name)}</b>
         <small>${esc([isCand(c) ? '候補' : '履修', (c.slots || []).map((s) => `${DAYS[s.d]}${s.p}限`).join('・') || '曜日・時限なし', c.teacher].filter(Boolean).join(' ・ '))}</small>
       </div>
-      <div class="slot-acts"><button class="btn primary" data-addslot="${c.id}">このコマにも入れる</button></div>
+      <div class="slot-acts"><button class="btn primary" data-addslot="${esc(c.id)}">このコマにも入れる</button></div>
     </li>`).join('')}</ul>
   </details>`;
 }
@@ -984,7 +986,8 @@ $('#editForm').elements.room.addEventListener('input', () => { if (!$('#slotRoom
 
 function renderSlotPicker() {
   const days = 6;
-  const periods = 6;
+  // 7・8限の授業（大学院）を編集するときは、その時限まで出す
+  const periods = Math.max(6, ...pickedSlots.map((s) => s.p));
   let h = `<div class="sp" style="--cols:${days}"><span></span>`;
   for (let d = 0; d < days; d++) h += `<span class="sp-h">${DAYS[d]}</span>`;
   for (let p = 1; p <= periods; p++) {
@@ -1037,8 +1040,9 @@ $('#editor').addEventListener('click', (e) => {
     const text = $('#pasteText').value;
     const got = extractCourse(pairsFromText(text), { text });
     const n = fillForm(got);
-    toast(!n ? '読み取れませんでした。項目を手で入れてください'
+    toast(!n ? '読み取れませんでした。シラバスの授業のページで全体を選んでコピーし、貼り付けてください（項目を手で入れても保存できます）'
       : got.slotNote ? `${n}項目を読み取りました。${got.slotNote}は組み合わせが分からないので、曜日・時限を選んでください`
+      : !pickedSlots.length && $('#editForm').elements.term.value !== '集中' ? `${n}項目を読み取りました。曜日・時限は読み取れなかったので、下のコマを選んでください`
       : `${n}項目を読み取りました。内容を確かめて保存してください`);
     if (n) $('#importBox').open = false;
   } else if (b.id === 'deleteCourse') {
@@ -1115,7 +1119,7 @@ function renderSettings() {
   const le = s.lastExport ? new Date(s.lastExport) : null;
   $('#backupInfo').textContent = le ? `前回の書き出し：${le.getFullYear()}年${le.getMonth() + 1}月${le.getDate()}日（${ago === 0 ? '今日' : `${ago}日前`}）` : 'まだ書き出していません。';
   // 時刻は「08:50」のような24時間の文字で入れる（端末の言語によって「AM/PM」になる時刻の欄は使わない）
-  const timeIn = (i, j, v, label) => `<input type="text" class="time-in" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="08:50" data-pi="${i}" data-pj="${j}" value="${v}" aria-label="${i + 1}限の${label}">`;
+  const timeIn = (i, j, v, label) => `<input type="text" class="time-in" inputmode="numeric" autocomplete="off" maxlength="5" placeholder="08:50" data-pi="${i}" data-pj="${j}" value="${esc(v)}" aria-label="${i + 1}限の${label}">`;
   $('#periodEditor').innerHTML = s.periods.map((p, i) => `
     <div class="period-row"><b>${i + 1}限</b><span class="pair">${timeIn(i, 0, p[0], '始まり')} 〜 ${timeIn(i, 1, p[1], '終わり')}</span></div>`).join('');
   const bm = bookmarklet();
@@ -1203,14 +1207,13 @@ $('#importFile').addEventListener('change', async (e) => {
   if (!file) return;
   try {
     const data = JSON.parse(await file.text());
-    if (!Array.isArray(data.courses)) throw new Error();
-    withUndo(`${data.courses.length}件の授業を読み込みました（今までのデータと置き換わりました）`, () => {
-      localStorage.setItem(KEY, JSON.stringify(data));
-      state = load();
-    });
+    if (!Array.isArray(data?.courses)) throw new Error();
+    // ファイルの中身は、決まった形の値だけにそろえてから入れる（細工されたファイルでも、スクリプトが動かないように）
+    const next = clean(data);
+    withUndo(`${next.courses.length}件の授業を読み込みました（今までのデータと置き換わりました）`, () => { state = next; });
     renderSettings();
   } catch {
-    toast('このファイルは読み込めませんでした');
+    toast('このファイルは読み込めませんでした。設定の「書き出す」で保存したファイル（kadai-jikanwari-….json）を選んでください');
   } finally {
     e.target.value = '';
   }
@@ -1261,16 +1264,60 @@ document.addEventListener('change', (e) => {
 });
 
 // ---- シラバスから来たとき（ブックマークレット・共有） ----
-function handleIncoming() {
+// シラバスの番号から、授業の一覧（data/）の行を探す（今の年度から順に）
+async function findOfferBySid(sid) {
+  const idx = await fetch('data/index.json').then((r) => (r.ok ? r.json() : { years: [] })).catch(() => ({ years: [] }));
+  for (const y of new Set([state.view.year, ...(idx.years || []).map((x) => x.year)])) {
+    const data = await loadOffers(y);
+    const r = data?.rows.find((x) => x[0] === Number(sid));
+    if (r) return { data, r };
+  }
+  return null;
+}
+// 一覧の1行を、編集画面に入れる形にする。曜日・時限は、組み合わせがはっきりしているときだけ入れる
+function courseFromOffer(data, r) {
+  const c = {
+    sid: String(r[0]), name: r[1], teacher: r[2], syllabus: data.detail + r[0], year: data.year,
+    category: r[3] === KYOTSU ? '共通教育' : r[3] === KYOSHOKU ? '教職' : '専門',
+    term: /c/.test(r[5] + r[6]) ? '集中' : offerTerm(data, r),
+  };
+  if (r[8] != null) c.credits = r[8];
+  if (r[9]) c.sessions = r[9];
+  if (c.term !== '集中' && !isLoose(r)) {
+    const { slots, clear } = slotsOfOffer(r, -1, -1);
+    if (clear) c.slots = cleanSlots(slots);
+    else c.slotNote = `曜日「${[...r[5]].map((x) => DAYS[x]).join(' ')}」・時限「${[...r[6]].map((x) => `${x}限`).join(' ')}」`;
+  }
+  return c;
+}
+
+async function handleIncoming() {
   let got = decodeImport(location.hash);
   if (!got) {
     // Android でシラバスのページを「共有」→このアプリ、のとき
     const q = new URLSearchParams(location.search);
     const url = q.get('url') || (q.get('text') || '').match(/https?:\/\/\S+/)?.[0];
     if (url || q.get('title')) got = { ...extractCourse([], { title: q.get('title') || '', url: url || '' }) };
+    // 鹿大のページでなければ、ページの題名も使わない（関係のない名前が入らないように）
+    if (got?.otherSite) got = { otherSite: true };
   }
   if (!got) return;
   history.replaceState(null, '', location.pathname);
+  // 鹿大シラバス検索の授業のページなら、授業の一覧（data/）から、科目名・曜日・時限などの空いている項目を埋める
+  // （共有ではURLと題名しか届かないため）
+  const sid = got.sid || sidFromUrl(got.syllabus);
+  if (sid) {
+    got.sid = sid;
+    if (!got.name || (!got.slots?.length && !got.slotNote && got.term !== '集中')) {
+      const found = await findOfferBySid(sid);
+      if (found) {
+        for (const [k, v] of Object.entries(courseFromOffer(found.data, found.r))) {
+          if (k === 'slotNote' && got.slots?.length) continue;
+          if (got[k] === undefined || got[k] === '' || (k === 'slots' && !got.slots?.length)) got[k] = v;
+        }
+      }
+    }
+  }
   const same = state.courses.find((c) => (got.sid && c.sid === got.sid) || (got.code && c.code === got.code && (!got.year || c.year === got.year)));
   if (same) {
     // 一覧から入れた授業には単位などがないので、シラバスから読んだ値で空いている項目を埋める
@@ -1286,19 +1333,23 @@ function handleIncoming() {
     toast(filled ? 'この授業はもう入っているので、空いていた項目（単位など）をシラバスから埋めました' : 'この授業はもう時間割に入っています');
     return;
   }
-  const n = Object.keys(got).filter((k) => !['syllabus', 'sid', 'slotNote'].includes(k)).length;
+  const n = Object.keys(got).filter((k) => !['syllabus', 'sid', 'slotNote', 'otherSite'].includes(k)).length;
   const year = got.year || state.view.year;
   const term = got.term || state.view.term;
   // もう履修する授業があるコマなら、最初から候補として入れる
   const busy = term !== '集中' && state.courses.some((c) => !isCand(c) && c.year === year && (c.term === term || c.term === '通年' || term === '通年')
     && (got.slots || []).some((s) => c.slots?.some((t) => t.d === s.d && t.p === s.p)));
+  const slotHint = got.slotNote ? `${got.slotNote}と書かれていて組み合わせが分からないので、曜日・時限を選んでください。`
+    : term !== '集中' && !got.slots?.length ? '曜日・時限は読み取れなかったので、選んでください。' : '';
   openEditor({ year, term, sessions: 15, status: busy ? 'cand' : 'take', ...got },
-    n ? `シラバスから読み込みました。${got.slotNote ? `${got.slotNote}と書かれていて組み合わせが分からないので、曜日・時限を選んでください。` : ''}${busy ? '同じコマにもう授業があるので、候補として入れます。' : ''}内容を確かめて保存してください。` : 'シラバスのURLだけ読み込みました。科目名と曜日・時限を入れてください。');
+    got.otherSite ? `鹿児島大学のシラバスのページではないため、URLは入れていません。${n ? `${slotHint}読み取った内容を確かめて保存してください。` : '科目名と曜日・時限を入れるか、シラバス検索で授業のページを開いてから、もう一度使ってください。'}`
+    : n ? `シラバスから読み込みました。${slotHint}${busy ? '同じコマにもう授業があるので、候補として入れます。' : ''}内容を確かめて保存してください。`
+    : 'シラバスのURLだけ読み込みました。科目名と曜日・時限を入れてください。');
 }
 
 render();
-handleIncoming();
-maybeWelcome();
+// シラバスから来たときの画面を先に出し、そのあとで、はじめての人に学部・学年を聞く
+handleIncoming().catch(() => {}).finally(maybeWelcome);
 setInterval(() => { if (!document.hidden) renderGrid(); }, 30000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
 
