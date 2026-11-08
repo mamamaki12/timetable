@@ -1,13 +1,15 @@
 // 一度開いたら、電波のない教室でも時間割を見られるようにする（ネットワーク優先・つながらなければキャッシュ）
-const CACHE = 'kadai-jikanwari-v35';
-const FILES = ['./', 'index.html', 'style.css', 'app.js', 'parse.js', 'manifest.webmanifest', 'icon.svg'];
+const CACHE = 'kadai-jikanwari-v36';
+const FILES = ['./', 'index.html', 'style.css', 'app.js', 'parse.js', 'sanitize.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
-    for (const k of await caches.keys()) if (k !== CACHE) await caches.delete(k);
+    // mamamaki12.github.io はほかのアプリ（てもとフォトなど）と保存場所を分け合っているので、
+    // 消すのはこのアプリの古い保存（kadai-jikanwari-…）だけにする
+    for (const k of await caches.keys()) if (k.startsWith('kadai-jikanwari-') && k !== CACHE) await caches.delete(k);
     await self.clients.claim();
   })());
 });

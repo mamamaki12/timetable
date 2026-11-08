@@ -161,7 +161,8 @@ async function fetchYear(token, year, courseList, programList, details) {
     if (i < 0) { sems.push(n); i = sems.length - 1; }
     return i;
   };
-  const mine = rows.filter((r) => r.academic_year === year);
+  // シラバスの番号が整数でない行は使わない（アプリは番号をそのまま画面のボタンやURLに使うため）
+  const mine = rows.filter((r) => r.academic_year === year && Number.isInteger(r.id));
   // progs：[[学科・プログラムの番号, 名前, 開設部局], …]。行の最後に、その授業の学科・プログラム（progs の何番目か）を並べる
   const idsOf = await fetchPrograms(token, year, programList);
   const progs = [];
@@ -173,7 +174,7 @@ async function fetchYear(token, year, courseList, programList, details) {
   await fillDetails(mine.map((r) => r.id), details);
   // [シラバスの番号, 科目名, 担当教員, 開設部局, 学期, 曜日, 時限, 学年, 単位数, 授業回数, 学科・プログラム]（単位数・授業回数は分からなければ null）
   const list = mine
-    .map((r) => [r.id, r.syllabus_name, cleanTeacher(r.teacher), r.course_code, semIndex(r.semester_name), encodeDays(r.day_name), encodeTimes(r.time_name), encodeYears(r.year_name), ...(details[r.id] || [null, null]), progsOf.get(r.id) || []])
+    .map((r) => [r.id, String(r.syllabus_name ?? ''), cleanTeacher(r.teacher), String(r.course_code ?? ''), semIndex(r.semester_name), encodeDays(r.day_name), encodeTimes(r.time_name), encodeYears(r.year_name), ...(details[r.id] || [null, null]), progsOf.get(r.id) || []])
     .sort((a, b) => a[0] - b[0]);
   return { year, source: `${BASE}/showSearch`, detail: `${BASE}/showDetail/ja/`, fetchedAt: new Date().toISOString(), depts, sems, progs, rows: list };
 }
@@ -192,7 +193,12 @@ const index = [];
 for (const year of years) {
   const result = await fetchYear(token, year, data.courseList, data.programList, details);
   if (!result.rows.length) { console.log(`  ${year}年度: 0件なので書き出しません`); continue; }
-  fs.writeFileSync(path.join(OUT, `syllabus-${year}.json`), JSON.stringify(result));
+  const file = path.join(OUT, `syllabus-${year}.json`);
+  // 前回の半分より少ないときは、シラバス検索が途中で止まったとみて、前回の一覧を残す
+  let before = 0;
+  try { before = JSON.parse(fs.readFileSync(file, 'utf8')).rows.length; } catch {}
+  if (result.rows.length < before / 2) { console.log(`  ${year}年度: ${result.rows.length}件（前回は${before}件）と大きく減ったので、書き換えません`); continue; }
+  fs.writeFileSync(file, JSON.stringify(result));
   index.push({ year, count: result.rows.length, fetchedAt: result.fetchedAt });
 }
 // 前に取った年度も一覧に残す
