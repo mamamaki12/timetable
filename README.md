@@ -116,6 +116,13 @@ npm test           # シラバス読み取りのテスト
 node scripts/fetch-syllabus.mjs   # 授業の一覧を取り直す（data/ に書く）
 ```
 
+Python 3 と Node.js 22 以上が必要です。Windows では、`npm test` がテストを 1 件も実行しないまま成功と表示されます（標準のシェルが `'tests/*.test.js'` の `'` を解釈しないため）。次のどちらかで実行してください。
+
+```powershell
+node --test "tests/*.test.js"                                      # 直接実行する
+npm config set script-shell "C:\Program Files\Git\bin\bash.exe"    # または、npm のスクリプトを Git Bash で動かす設定にする（1回だけ）
+```
+
 `main` に入ると GitHub Actions で GitHub Pages に公開します（リポジトリの Settings → Pages → Source を「GitHub Actions」にしておいてください）。
 
 ## 注意
